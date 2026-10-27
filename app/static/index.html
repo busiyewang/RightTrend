@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RightTrend 右侧分析</title>
+<style>
+  :root { --bg:#fafafa; --fg:#1d1d1f; --muted:#6e6e73; --card:#fff; --line:#e5e5ea;
+          --long:#1a7f37; --short:#cf222e; --watch:#9a6700; --na:#6e7781; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111; --fg:#eee; --muted:#9a9aa0; --card:#1c1c1e; --line:#333; }
+  }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.55 -apple-system,"PingFang SC",sans-serif; }
+  main { max-width:1100px; margin:0 auto; padding:16px; }
+  h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:16px; margin:24px 0 8px; }
+  .muted { color:var(--muted); } .row { display:flex; gap:12px; flex-wrap:wrap; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; flex:1 1 320px; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px; border:1px solid currentColor; }
+  .long { color:var(--long); } .short { color:var(--short); } .watch { color:var(--watch); } .no_signal { color:var(--na); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td, th { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  ul { margin:4px 0; padding-left:18px; }
+  button, input { font:inherit; }
+  .scroll { overflow-x:auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>RightTrend · OKX 右侧交易分析</h1>
+  <div class="muted" id="meta">加载中…</div>
+  <div class="muted">结论仅为分析参考,不执行交易。模型信心不是历史胜率或收益概率。</div>
+
+  <h2>最新结论</h2>
+  <div class="row" id="latest"></div>
+
+  <h2>社区日报</h2>
+  <div class="card" id="community"></div>
+
+  <h2>关注列表与手动任务</h2>
+  <div class="card">
+    <div id="watch"></div>
+    <p><input id="instInput" placeholder="如 SOL-USDT-SWAP" size="20">
+      <button onclick="watch(true)">加入关注</button>
+      <button onclick="watch(false)">移出关注</button>
+      <button onclick="submitRun()">提交单次分析</button>
+      <button onclick="submitDaily()">提交社区日报</button></p>
+    <div class="muted">手动任务由 worker 进程执行;worker 未运行时会一直显示 pending。</div>
+  </div>
+
+  <h2>最近任务</h2>
+  <div class="card scroll"><table id="jobs"></table></div>
+</main>
+<script>
+const fmt = ms => ms ? new Date(ms).toLocaleString('zh-CN', {hour12:false}) : '—';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function j(url, opt) { const r = await fetch(url, opt); return r.json(); }
+
+function reportCard(r) {
+  const t = r.technical, f = r.final, c = r.community;
+  const lv = (r.model_raw && r.model_raw.levels) || {};
+  return `<div class="card">
+    <div><b>${esc(r.inst_id)}</b> <span class="tag ${esc(f.final)}">${esc(f.label)}</span></div>
+    <div class="muted">分析时刻 ${fmt(r.analysis_as_of)} · 现价 ${esc(r.live_price)} · 模型 ${esc(r.model || '—')}(${esc(r.model_status)})</div>
+    <div>技术:${esc(t.verdict)} · 右侧 ${esc(t.right_side)} · 结构确认 ${t.structure_confirmed ? '是' : '否'} · 盈亏比检查 ${esc(t.rr.status)}${t.rr.at_live ? '(净 ' + esc(t.rr.at_live.net_rr) + ')' : ''}</div>
+    <div>社区:${c.available ? esc(c.sentiment) : '不可用'}${c.note ? '(' + esc(c.note) + ')' : ''}</div>
+    ${Object.keys(lv).length ? '<ul>' + ['1W','1D','4H','1H'].map(k => `<li>${k}:${esc(lv[k])}</li>`).join('') + '</ul>' : ''}
+    ${(t.downgrades||[]).length ? '<div>降级原因:<ul>' + t.downgrades.map(x => `<li>${esc(x)}</li>`).join('') + '</ul></div>' : ''}
+    ${(t.conflicts||[]).length ? '<div>冲突:' + t.conflicts.map(esc).join(';') + '</div>' : ''}
+    <div>依据:<ul>${(t.reasons||[]).slice(0,6).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
+    ${(f.notes||[]).length ? '<div class="muted">' + f.notes.map(esc).join(';') + '</div>' : ''}
+    ${r.model_raw && r.model_raw.watch_next ? '<div class="muted">下一小时观察:' + esc(r.model_raw.watch_next) + '</div>' : ''}
+  </div>`;
+}
+
+async function load() {
+  const s = await j('/api/status');
+  document.getElementById('meta').textContent =
+    `模型 ${s.llm}${s.model ? ' · ' + s.model : ''} · 每小时整点后 ${s.schedule.hourly_delay_sec}s · 每日 ${s.schedule.daily_time} (${s.schedule.schedule_tz}) · 日周线口径 ${s.schedule.daily_bar_mode}`;
+  const watching = s.watchlist.filter(w => w.enabled).map(w => w.inst_id);
+  document.getElementById('watch').innerHTML = '关注中:' + (watching.map(esc).join('、') || '无');
+  const cards = [];
+  for (const inst of watching) {
+    const r = await j('/api/reports?n=1&inst=' + encodeURIComponent(inst));
+    cards.push(r.reports[0] ? reportCard(r.reports[0]) : `<div class="card"><b>${esc(inst)}</b><div class="muted">尚无报告</div></div>`);
+  }
+  document.getElementById('latest').innerHTML = cards.join('');
+  const cr = (await j('/api/community?n=1')).reports[0];
+  document.getElementById('community').innerHTML = cr ? `
+    <div>${fmt(cr.window_start)} — ${fmt(cr.window_end)} · 采集 <b>${esc(cr.collection_status)}</b> (${esc(cr.source_mode)}) · 模型 ${esc(cr.model_status)} · 过期 ${fmt(cr.expires_at)}</div>
+    <div class="muted">原始 ${esc(cr.sample_stats.raw)} 条 · 有效 ${esc(cr.sample_stats.valid ?? '—')} · 作者 ${esc(cr.sample_stats.authors_total ?? '—')} · 未解析图片 ${esc(cr.sample_stats.unparsed_images ?? 0)} · 截断 ${esc(cr.sample_stats.truncated_for_model ?? 0)}</div>
+    ${cr.overall && cr.overall.summary ? '<p>' + esc(cr.overall.summary) + '</p>' : ''}
+    <table><tr><th>币种</th><th>样本</th><th>情绪</th><th>趋势预期</th><th>主题 / 反对观点</th><th>证据</th></tr>
+    ${cr.assets.map(a => `<tr><td>${esc(a.symbol)}</td><td>${esc(a.data_quality)}${a.sample ? '<br>' + a.sample.valid_posts + ' 帖 / ' + a.sample.authors + ' 作者' : ''}</td>
+      <td>${esc(a.sentiment)}</td><td>${a.trend_expectation ? esc(a.trend_expectation.direction) + ' ' + esc(a.trend_expectation.horizon || '') : '—'}</td>
+      <td>${(a.themes||[]).map(esc).join(';')}${(a.counterarguments||[]).length ? '<br><span class="muted">反:' + a.counterarguments.map(esc).join(';') + '</span>' : ''}${a.note ? '<br><span class="muted">' + esc(a.note) + '</span>' : ''}</td>
+      <td>${(a.evidence||[]).slice(0,5).map(e => `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.ref)}</a> ${esc(e.stance)}`).join('<br>')}</td></tr>`).join('')}
+    </table>` : '<span class="muted">尚无社区日报</span>';
+  document.getElementById('jobs').innerHTML = '<tr><th>类型</th><th>对象</th><th>时段</th><th>状态</th><th>错误</th><th>调用/Token</th><th>完成</th></tr>' +
+    s.recent_jobs.map(x => `<tr><td>${esc(x.job_type)}</td><td>${esc(x.scope)}</td><td>${esc(x.slot_key)}</td><td>${esc(x.status)}${x.uncertain ? '(不确定)' : ''}</td><td>${esc(x.error_code || '')}</td><td>${x.llm_calls}/${x.tokens}</td><td>${fmt(x.finished_at)}</td></tr>`).join('');
+}
+async function watch(on) {
+  const inst = document.getElementById('instInput').value.trim(); if (!inst) return;
+  await j(`/api/watchlist?inst=${encodeURIComponent(inst)}&on=${on ? 1 : 0}`, {method:'POST'}); load();
+}
+async function submitRun() {
+  const inst = document.getElementById('instInput').value.trim(); if (!inst) return;
+  await j('/api/run?target=' + encodeURIComponent(inst), {method:'POST'}); load();
+}
+async function submitDaily() { await j('/api/run?target=daily', {method:'POST'}); load(); }
+load(); setInterval(load, 60000);
+</script>
+</body>
+</html>

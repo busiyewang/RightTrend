@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+.idea/
+.vscode/
+.DS_Store
+*.log
+.pytest_cache/
+
+# 本地密钥与运行数据(SQLite、锁文件)
+.env
+.env.*
+!.env.example
+var/
