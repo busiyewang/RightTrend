@@ -4,6 +4,9 @@
 **右侧交易机会**；每天采集 **OKX Orbit(星球)公开社区帖子**,交给 DeepSeek 做社区趋势日报。
 两条结论由本地规则校验后汇总。本服务只做分析,不下单。
 
+结果页现已提供详细中文报告：一句结论、四周期盘面、条件情景、参考计划、数据缺口、风险与下一步观察。
+默认展开 4H，可展开 1H/1D/1W 对照，支持复制整份报告。新报告会保存生成时的指标与关键位摘要；旧报告仍可查看原有内容。
+
 > 结论只是分析参考,不构成投资建议。模型给出的 confidence 是主观把握,不是历史胜率或收益概率。
 
 ---
@@ -11,7 +14,7 @@
 ## 1. 快速开始
 
 ```bash
-cd /Users/wangye/learnCode/RightTrend
+cd /Users/wangye/YeWang/加密货币/RightTrend
 /usr/bin/python3 -m venv .venv                 # 本机 Python 3.9.6;代码兼容 3.9
 .venv/bin/pip install -r requirements.txt
 cp .env.example .env                           # 填 DEEPSEEK_API_KEY 和 DEEPSEEK_MODEL
@@ -35,7 +38,10 @@ cp .env.example .env                           # 填 DEEPSEEK_API_KEY 和 DEEPSE
 | 离线测试 | `.venv/bin/python -m pytest -q` |
 
 没有 DeepSeek key 也能运行:行情、缓存、本地证据和社区采集照常工作,模型状态显示 `not_configured`,
-小时报告的最终结论为"无有效技术结论"。
+小时报告的最终结论为"无有效技术结论"；详细页仍展示本地指标与待确认的观察情景。
+
+网页本身只查询结果和提交任务；要每小时自动拉行情生成报告，需另开终端运行 `worker`。
+只想先查看一份真实行情报告时，可先运行 `analyze ETH-USDT-SWAP`，再运行 `serve`。
 
 本机代理提示(沿用参考项目经验):访问 OKX 需要走系统代理(不要清 `https_proxy`);用 curl 访问本服务时加
 `--noproxy '*'`,例如 `curl -s --noproxy '*' http://127.0.0.1:8430/api/status`。
@@ -129,6 +135,21 @@ cp .env.example .env                           # 填 DEEPSEEK_API_KEY 和 DEEPSE
 
 小时报告记录实际引用的日报 `community_report_id`;之后生成的日报不会回填旧报告。
 
+### 2.5 详细报告(`analysis/reporting.py`)
+
+- **盘面事实**：逐周期展示最后已收盘价、EMA5/10/20/40/60/80、MACD(10,20,5)、KDJ、RSI、成交量、
+  有效右侧证据和关键位。EMA 为指数均线，至少达到对应根数才显示；它是辅助观察，不改变原有缠论信号。
+- **三种情景**：从 4H 本批次关键位选择收盘价上下的观察边界，输出“上破回试 / 下破回抽 / 区间等待”。
+  情景始终是待确认预案，均线触及不等于二买/三卖。必需周期数据不合格或 4H 序列有缺口时，不生成可用情景。
+- **参考计划**：只展示已经本地核对的价格与净盈亏比；最终为观望时，计划也保持等待。
+  模型观点被本地降级或与最终结论不一致时，不展示其周期解读。没有账户风险预算，不计算仓位与杠杆。
+- **数据缺口**：尚未接入 Delta/CVD、OI、资金费率及链上资金流，页面明确显示“未接入”，不由 K 线或社区观点推断。
+- **历史可核对**：`report.detail` 随原报告一起保存，包含当时指标、关键位、报告口径与情景，不保存原始 K 线。
+  API `/api/reports` 和 `/api/reports/<id>` 直接返回；CLI `reports --full` 也可查看。
+
+详细工程规则与边界见 [docs/report-profile.md](docs/report-profile.md)。报告使用本地确定性模板组织事实与情景；
+DeepSeek 在原有一次技术调用中补充周期解释，不增加额外模型调用，也不展示模型内部思考过程。
+
 ---
 
 ## 3. 社区采集:已验证范围与限制
@@ -179,6 +200,8 @@ OKX 官方 FAQ 说明 Orbit 没有公开 API。本项目只读取**公开网页�
 日报状态区分:采集失败(`collection_status` ≠ ok/partial,`data_quality=unavailable`)/ 样本不足
 (`insufficient`,`sentiment=unknown`,不调模型)/ 社区观点中性(`sufficient` + `neutral`)。
 模型引用不存在或不属于该币种的帖子编号会被丢弃并记入 `validation_errors`;链接一律由本地映射。
+币种级 Schema 错误或没有任何可核对证据时，该币种结论不可用，不参与方向合并；有效的其他币种仍可独立使用。
+日报 `model_status` 按最终有效结果区分 `ok / partial / failed`，每个币种另有 `analysis_status` 与原因。
 
 ---
 
@@ -217,7 +240,8 @@ OKX 官方 FAQ 说明 Orbit 没有公开 API。本项目只读取**公开网页�
 ```
 app/        config.py(配置)  cli.py(命令行)  api.py(查询 API)  static/index.html(结果页)
 market/     okx.py(OKX 客户端)  cache.py(内存缓存)  service.py(预热/增量/质量/批次快照)  timeframes.py
-analysis/   chanlun/(移植的缠论与指标)  evidence.py  snapshot.py  schema.py  validate.py  combine.py
+analysis/   chanlun/(缠论与指标)  evidence.py  snapshot.py  schema.py  validate.py  combine.py
+            market_summary.py(指标摘要)  reporting.py(详细报告)
 community/  sources.py(Orbit 公开页 / 导入)  process.py(整理)  report.py(日报)
 llm/        deepseek.py  prompts.py
 jobs/       runner.py(单次任务)  scheduler.py(可注入时钟)  worker.py(单实例循环)
@@ -235,6 +259,12 @@ API:`GET /api/status`、`GET /api/reports?inst=&n=`、`GET /api/reports/<id>`、
 ---
 
 ## 6. 验证状态(2026-10-27)
+
+详细报告扩展的本次验证：离线测试 **142 通过 / 1 跳过**；真实 ETH 四周期行情已成功获取并生成无模型报告，
+本地浏览器已检查详细页。DeepSeek 尚未配置，因此不把本次验证记为真实模型联调通过。
+原端到端测试固定行情时刻却读取系统时钟的问题已修正；无效技术 Schema 现在记录为失败任务。
+
+以下保留首版交付时的验证记录：
 
 | 项目 | 状态 | 说明 |
 | --- | --- | --- |

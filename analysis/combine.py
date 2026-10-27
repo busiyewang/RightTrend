@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
+from analysis.schema import DIRECTIONS, KINDS, SENTIMENTS, STANCES, valid_enum
+
 ALIGN = {"long": "bullish", "short": "bearish"}
 OPPOSE = {"long": "bearish", "short": "bullish"}
 
@@ -21,14 +23,39 @@ def community_view(report: Optional[Dict], symbol: str, as_of: int) -> Dict:
     if report["collection_status"] in ("failed", "login_required", "blocked"):
         return {**base, "available": False, "status": report["collection_status"],
                 "note": f"社区采集状态 {report['collection_status']}"}
-    asset = next((a for a in report.get("assets") or [] if a.get("symbol") == symbol), None)
+    assets = report.get("assets")
+    asset = next((a for a in assets if isinstance(a, dict) and a.get("symbol") == symbol), None) \
+        if isinstance(assets, list) else None
     if not asset:
         return {**base, "available": False, "status": "unavailable", "note": f"日报未覆盖 {symbol}"}
     if asset.get("data_quality") != "sufficient":
         return {**base, "available": False, "status": asset.get("data_quality"),
                 "note": f"{symbol} 社区样本{'不足' if asset.get('data_quality') == 'insufficient' else '不可用'}"}
-    if asset.get("sentiment") in (None, "unknown"):
+    status = asset.get("analysis_status")
+    if status is not None and status != "ok":
+        return {**base, "available": False,
+                "status": status if isinstance(status, str) else "schema_invalid",
+                "note": asset.get("note") or "社区结论未通过本地校验"}
+    sentiment = asset.get("sentiment")
+    if not valid_enum(sentiment, SENTIMENTS):
+        return {**base, "available": False, "status": "schema_invalid", "note": "社区情绪枚举无效"}
+    if sentiment == "unknown":
         return {**base, "available": False, "status": "unknown", "note": "社区情绪未知"}
+    trend = asset.get("trend_expectation")
+    if not isinstance(trend, dict) or not valid_enum(trend.get("direction"), DIRECTIONS):
+        return {**base, "available": False, "status": "schema_invalid", "note": "社区趋势方向无效"}
+    evidence = asset.get("evidence")
+    valid_evidence = isinstance(evidence, list) and any(
+        isinstance(e, dict)
+        and isinstance(e.get("ref"), str) and bool(e["ref"])
+        and isinstance(e.get("post_id"), str) and bool(e["post_id"])
+        and e.get("symbol", symbol) == symbol
+        and valid_enum(e.get("stance"), STANCES) and valid_enum(e.get("kind"), KINDS)
+        for e in evidence)
+    if not valid_evidence:
+        return {**base, "available": False, "status": "no_evidence", "note": "社区结论没有可核对的本币种证据"}
+    if report.get("model_status") not in (None, "ok", "partial"):
+        return {**base, "available": False, "status": "unavailable", "note": "社区模型结论不可用"}
     return {**base, "available": True, "status": "ok", "sentiment": asset["sentiment"],
             "trend_expectation": asset.get("trend_expectation"),
             "sample": asset.get("sample")}

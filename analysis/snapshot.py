@@ -10,6 +10,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
+from analysis.chanlun.indicators import EMA_PERIODS
 from market.timeframes import LEVELS
 
 TZ8 = timezone(timedelta(hours=8))
@@ -82,6 +83,9 @@ def _level_block(lv: str, item: Dict, n_bars: int, full: bool, as_of: int) -> Di
         "direction": item.get("direction"),
         "bars_sent": 0,
         "bars": _rows(pl, n_bars),
+        # 固定大小的最新值摘要在预算裁剪后仍保留,无需为每根K线增加六列。
+        "ema_latest": {f"ema{n}": _r(((pl.get("indicators") or {}).get("ema", {}).get(f"ema{n}") or [None])[-1])
+                       for n in EMA_PERIODS},
         "evidence": [_ev_view(e, full) for e in evidence],
         "key_levels": [{"id": k["id"], "name": k["name"], "price": k["price"]} for k in item["key_levels"]],
         "local_decision": {k: dec.get(k) for k in keep if dec.get(k) is not None},
@@ -117,7 +121,8 @@ def build_model_input(inst_id: str, evidence: Dict, batch, bars_per_level: Dict[
             "live_price": evidence["live_price"],
             "columns": COLUMNS,
             "units": {"time": "K线开盘时间 UTC+8", "vol": "合约张数(SWAP,不可跨币种比较)",
-                      "vol_ccy": "基础币数量"},
+                      "vol_ccy": "基础币数量",
+                      "ema_latest": "最后已收盘K线的EMA(span=n,adjust=False,min_periods=n);样本不足为null;不是双倍SMA"},
             "levels": levels,
             "forming_bars_unconfirmed": forming,
             "missing_or_degraded": missing,

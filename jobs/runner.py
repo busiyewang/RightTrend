@@ -11,6 +11,7 @@ from typing import Callable, Dict, Optional
 from analysis.chanlun import CHAN_VERSION
 from analysis.combine import combine, community_view
 from analysis.evidence import build_evidence
+from analysis.reporting import build_detailed_report
 from analysis.schema import validate_tech
 from analysis.snapshot import build_model_input
 from analysis.validate import STRATEGY_VERSION, review_technical
@@ -75,7 +76,9 @@ def analyze(ctx: Context, inst_id: str, job_id: Optional[str] = None,
                 r = ctx.llm.chat_json(TECH_SYSTEM_PROMPT, "分析数据(JSON):\n" + text)
                 raw, usage, attempts, model_name = r.data, r.usage, r.attempts, r.model
                 model_out, schema_errs = validate_tech(r.data)
-                model_status = "ok"
+                model_status = "schema_invalid" if schema_errs else "ok"
+                if schema_errs:
+                    err = "; ".join(schema_errs[:8])
             except LLMError as e:
                 model_status, err, attempts = e.code, e.msg, e.attempts
     tech = review_technical(model_status, model_out, schema_errs, ev, s, err)
@@ -99,6 +102,8 @@ def analyze(ctx: Context, inst_id: str, job_id: Optional[str] = None,
                               "local_action": (ev["levels"][lv].get("local_decision") or {}).get("action")}
                          for lv in ev["levels"]},
     }
+    rep["detail"] = build_detailed_report(inst_id, ev, tech, final, comm,
+                                          model_out if model_status == "ok" else None, s)
     ctx.store.save_report(rep)
     return rep
 

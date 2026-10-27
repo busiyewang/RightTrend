@@ -3,111 +3,456 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RightTrend 右侧分析</title>
+<meta name="color-scheme" content="light dark">
+<title>RightTrend · 行情研究室</title>
 <style>
-  :root { --bg:#fafafa; --fg:#1d1d1f; --muted:#6e6e73; --card:#fff; --line:#e5e5ea;
-          --long:#1a7f37; --short:#cf222e; --watch:#9a6700; --na:#6e7781; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#111; --fg:#eee; --muted:#9a9aa0; --card:#1c1c1e; --line:#333; }
-  }
-  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.55 -apple-system,"PingFang SC",sans-serif; }
-  main { max-width:1100px; margin:0 auto; padding:16px; }
-  h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:16px; margin:24px 0 8px; }
-  .muted { color:var(--muted); } .row { display:flex; gap:12px; flex-wrap:wrap; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; flex:1 1 320px; }
-  .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px; border:1px solid currentColor; }
-  .long { color:var(--long); } .short { color:var(--short); } .watch { color:var(--watch); } .no_signal { color:var(--na); }
-  table { width:100%; border-collapse:collapse; font-size:13px; }
-  td, th { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
-  ul { margin:4px 0; padding-left:18px; }
-  button, input { font:inherit; }
+  :root { color-scheme:light; --bg:#f4f5f3; --paper:#fff; --ink:#202c28; --muted:#69756f; --line:#dde4de; --soft:#f7f9f6; --accent:#226348; --accent-soft:#eaf3eb; --long:#237445; --short:#b54c41; --watch:#8a672b; --watch-soft:#f8f3e8; --error-bg:#fff1ed; --shadow:0 3px 18px #253c2d05; }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; scroll-padding-top:24px; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; }
+  a { color:var(--accent); text-underline-offset:3px; }
+  button,input { font:inherit; }
+  button { cursor:pointer; border:1px solid var(--line); background:var(--paper); color:var(--ink); border-radius:8px; padding:8px 14px; line-height:1.5; }
+  button:hover { background:var(--soft); border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:wait; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.primary:hover { filter:brightness(1.12); }
+  button:focus-visible,input:focus-visible,summary:focus-visible,a:focus-visible { outline:3px solid #71a98a; outline-offset:4px; }
+  input { min-width:0; width:260px; border:1px solid var(--line); border-radius:8px; padding:9px 12px; color:var(--ink); background:var(--paper); }
+  h1,h2,h3,h4,p { margin-top:0; }
+  p { margin-bottom:12px; }
+  h1 { font-size:32px; line-height:1.35; letter-spacing:-.7px; margin-bottom:10px; }
+  h2 { font-size:20px; line-height:1.5; margin-bottom:0; }
+  h3 { font-size:17px; line-height:1.6; margin-bottom:12px; }
+  h4 { font-size:14px; margin-bottom:6px; }
+  ul,ol { margin:8px 0 0; padding-left:20px; }
+  li { padding-left:2px; margin:5px 0; }
+  header { border-bottom:1px solid var(--line); background:var(--paper); }
+  .topbar { max-width:1120px; margin:0 auto; padding:17px 28px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
+  .brand { display:flex; align-items:center; gap:10px; font-size:17px; font-weight:700; letter-spacing:-.3px; }
+  .brandmark { width:31px; height:31px; display:grid; place-items:center; background:var(--accent); color:#fff; border-radius:8px; font-size:12px; letter-spacing:-1px; }
+  .nav { display:flex; gap:23px; font-size:13px; }
+  .nav a { color:var(--muted); text-decoration:none; }
+  .nav a:hover { color:var(--accent); }
+  main { max-width:1120px; margin:0 auto; padding:36px 28px 56px; }
+  .intro { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:25px; }
+  .eyebrow { color:var(--accent); font-size:11px; font-weight:700; letter-spacing:1.8px; margin-bottom:9px; }
+  .intro p { color:var(--muted); margin:0; }
+  .intro-action { flex-shrink:0; text-align:right; }
+  .updated { display:block; color:var(--muted); font-size:11px; margin-top:6px; }
+  .muted { color:var(--muted); }
+  .small { font-size:12px; }
+  .meta { color:var(--muted); font-size:12px; padding:13px 17px; border:1px solid var(--line); border-radius:10px; background:var(--paper); line-height:1.9; }
+  .section-top { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin:32px 0 15px; }
+  .section-top p { color:var(--muted); font-size:12px; margin:0; }
+  .card { background:var(--paper); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); }
+  .padded { padding:24px; }
+  .report { margin-bottom:20px; overflow:hidden; }
+  .report-head { padding:24px 28px 19px; }
+  .report-top { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:13px; }
+  .instrument { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+  .instrument-name { font-size:18px; font-weight:700; letter-spacing:.2px; }
+  .report-time { color:var(--muted); font-size:12px; }
+  .tag { display:inline-block; font-size:11px; line-height:1.65; font-weight:500; border:1px solid var(--line); border-radius:5px; padding:2px 8px; background:var(--soft); vertical-align:middle; white-space:normal; }
+  .long { color:var(--long); background:var(--accent-soft); }
+  .short { color:var(--short); background:var(--error-bg); }
+  .watch { color:var(--watch); background:var(--watch-soft); }
+  .no_signal { color:var(--muted); }
+  .headline { font-size:22px; font-weight:650; line-height:1.6; margin:0 0 10px; overflow-wrap:anywhere; }
+  .report-summary { color:var(--muted); max-width:900px; margin-bottom:15px; white-space:pre-line; }
+  .report-meta { display:flex; flex-wrap:wrap; gap:8px 18px; font-size:12px; color:var(--muted); }
+  .report-meta strong { color:var(--ink); font-weight:550; }
+  .report-body { border-top:1px solid var(--line); }
+  summary { cursor:pointer; list-style:none; }
+  summary::-webkit-details-marker { display:none; }
+  .report-toggle { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 28px; font-size:13px; color:var(--accent); font-weight:600; background:var(--soft); }
+  .report-toggle::after,.level-toggle::after,.validation-toggle::after { content:'＋'; font-size:17px; font-weight:400; margin-left:auto; }
+  details[open] > .report-toggle::after,details[open] > .level-toggle::after,details[open] > .validation-toggle::after { content:'−'; }
+  .reading { padding:7px 28px 27px; }
+  .report-section { padding-top:25px; }
+  .section-heading { display:flex; align-items:center; gap:10px; margin-bottom:13px; }
+  .section-heading h3 { margin:0; }
+  .section-no { color:var(--accent); font-size:11px; font-weight:700; letter-spacing:.5px; width:21px; }
+  .basis { color:var(--muted); font-size:12px; margin:0 0 16px; }
+  .level { border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-top:10px; }
+  .level-toggle { display:flex; align-items:center; gap:12px; padding:13px 16px; background:var(--soft); }
+  .level-title { font-weight:650; min-width:44px; }
+  .level-direction { font-size:13px; }
+  .focus-tag { font-size:10px; color:var(--accent); border-radius:4px; padding:1px 5px; background:var(--accent-soft); }
+  .level-content { padding:16px; }
+  .level-context { color:var(--muted); font-size:12px; margin:0 0 13px; }
+  .metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .metric { padding:11px 13px; border:1px solid var(--line); border-radius:7px; }
+  .metric-name { color:var(--muted); font-size:11px; margin-bottom:4px; }
+  .metric-value { font-size:14px; font-weight:600; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+  .metric-note { margin-top:4px; color:var(--muted); font-size:12px; }
+  .key-label { color:var(--muted); font-size:12px; margin:14px 0 7px; }
+  .key-levels { display:flex; flex-wrap:wrap; gap:7px; }
+  .key-level { border-radius:5px; border:1px solid var(--line); padding:3px 9px; font-size:12px; }
+  .key-level strong { font-weight:600; margin-left:5px; font-variant-numeric:tabular-nums; }
+  .model-comment { font-size:13px; margin:15px 0 0; padding-left:12px; border-left:2px solid var(--line); white-space:pre-line; }
+  .model-comment span { color:var(--muted); font-size:11px; display:block; margin-bottom:3px; }
+  .section-note { color:var(--muted); font-size:12px; margin:-4px 0 13px; }
+  .scenarios { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+  .scenario { border:1px solid var(--line); border-radius:10px; padding:16px; font-size:13px; overflow-wrap:anywhere; }
+  .scenario-top { display:flex; align-items:center; gap:8px; margin-bottom:11px; }
+  .scenario-letter { width:23px; height:23px; display:grid; place-items:center; background:var(--soft); border:1px solid var(--line); border-radius:5px; font-size:11px; font-weight:700; }
+  .scenario h4 { font-size:14px; line-height:1.7; margin-bottom:10px; }
+  .scenario p { margin-bottom:12px; color:var(--muted); }
+  .scenario ul { padding-left:16px; margin-top:4px; }
+  .scenario-label { color:var(--muted); font-size:11px; margin-top:14px; }
+  .scenario-action { border-top:1px solid var(--line); margin-top:14px; padding-top:11px; }
+  .scenario-action p { color:var(--ink); margin:3px 0 0; }
+  .plan { background:var(--accent-soft); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  .plan-status { font-size:13px; font-weight:600; color:var(--accent); }
+  .funds { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+  .fund { padding:13px 15px; background:var(--soft); border-radius:8px; font-size:12px; }
+  .fund-title { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin-bottom:6px; }
+  .fund p { color:var(--muted); margin:0; }
+  .two-col { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; }
+  .risk-list { color:var(--muted); font-size:13px; }
+  .conclusion { margin:24px 0 18px; padding:15px 18px; background:var(--soft); border-left:3px solid var(--accent); border-radius:0 7px 7px 0; font-size:14px; white-space:pre-line; }
+  .validation { border-top:1px solid var(--line); padding-top:13px; }
+  .validation-toggle { display:flex; align-items:center; color:var(--muted); font-size:12px; }
+  .validation-content { font-size:12px; color:var(--muted); padding:10px 0; }
+  .validation-content p { margin-bottom:6px; }
+  .report-footer { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:15px; color:var(--muted); font-size:11px; }
+  .report-footer button { font-size:12px; padding:6px 11px; flex-shrink:0; }
+  .empty { text-align:center; color:var(--muted); padding:34px 24px; }
+  .empty strong { display:block; color:var(--ink); font-size:15px; margin-bottom:7px; }
+  .notice { padding:12px 16px; border:1px solid var(--line); border-radius:8px; margin-top:14px; font-size:13px; overflow-wrap:anywhere; }
+  .notice.error { color:var(--short); background:var(--error-bg); }
+  .notice.success { color:var(--accent); background:var(--accent-soft); }
+  [hidden] { display:none !important; }
+  .watchlist { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:20px; }
+  .watch-chip { font-size:12px; padding:4px 10px; border:1px solid var(--line); border-radius:6px; background:var(--soft); }
+  .form-label { display:block; font-size:12px; color:var(--muted); margin-bottom:7px; }
+  .actions { display:flex; align-items:center; flex-wrap:wrap; gap:9px; margin-bottom:13px; }
+  .actions-separator { width:1px; height:24px; background:var(--line); margin:0 4px; }
   .scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  td,th { text-align:left; padding:11px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; background:var(--soft); white-space:nowrap; }
+  td { overflow-wrap:anywhere; }
+  tr:last-child td { border-bottom:0; }
+  .jobs-card { overflow:hidden; }
+  .community-meta { font-size:12px; color:var(--muted); margin-bottom:13px; }
+  .community-table { min-width:670px; }
+  .jobs-table { min-width:690px; }
+  .legacy { font-size:13px; }
+  .legacy > div { margin:9px 0; }
+  footer { color:var(--muted); font-size:11px; text-align:center; margin-top:30px; }
+  @media (min-width:1000px) { .metric:last-child:nth-child(odd) { grid-column:1 / -1; } }
+  @media (max-width:760px) {
+    .topbar { padding:14px 18px; }
+    .nav { gap:15px; font-size:12px; }
+    .nav a:last-child { display:none; }
+    main { padding:26px 16px 40px; }
+    h1 { font-size:26px; }
+    .intro { align-items:flex-start; gap:12px; }
+    .intro p { font-size:12px; }
+    .intro-action button { font-size:12px; padding:7px 10px; }
+    .updated { max-width:110px; }
+    .report-head { padding:20px 19px 16px; }
+    .headline { font-size:19px; }
+    .report-toggle { padding:13px 19px; }
+    .reading { padding:4px 19px 21px; }
+    .scenarios,.funds,.two-col { grid-template-columns:1fr; }
+    .two-col { gap:0; }
+    .scenario { padding:17px; }
+    .scenario ul { margin-bottom:5px; }
+    .scenario-label { margin-top:10px; }
+    .padded { padding:19px; }
+    .section-top { margin-top:27px; }
+    .report-footer { align-items:flex-start; }
+    .level-toggle { gap:8px; padding:12px; flex-wrap:wrap; }
+    .level-content { padding:12px; }
+    .level-direction { max-width:65%; }
+    .metrics { gap:8px; }
+    .metric { padding:10px; }
+    .actions-separator { display:none; }
+    input { width:100%; }
+    .actions button { flex:1 1 auto; }
+  }
+  @media (max-width:430px) { .metrics { grid-template-columns:1fr; } .nav { gap:11px; } .nav a:nth-child(2) { display:none; } }
+  @media (prefers-color-scheme:dark) {
+    :root { color-scheme:dark; --bg:#151b18; --paper:#1b231e; --ink:#e4eae5; --muted:#9baaa0; --line:#344239; --soft:#202a23; --accent:#87c4a1; --accent-soft:#233b2c; --long:#8aca9c; --short:#efaaa0; --watch:#dbbd7d; --watch-soft:#393321; --error-bg:#3b2623; --shadow:none; }
+    .brandmark,button.primary { background:#386e4f; color:#fff; border-color:#386e4f; }
+  }
+  @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } }
 </style>
 </head>
 <body>
-<main>
-  <h1>RightTrend · OKX 右侧交易分析</h1>
-  <div class="muted" id="meta">加载中…</div>
-  <div class="muted">结论仅为分析参考,不执行交易。模型信心不是历史胜率或收益概率。</div>
-
-  <h2>最新结论</h2>
-  <div class="row" id="latest"></div>
-
-  <h2>社区日报</h2>
-  <div class="card" id="community"></div>
-
-  <h2>关注列表与手动任务</h2>
-  <div class="card">
-    <div id="watch"></div>
-    <p><input id="instInput" placeholder="如 SOL-USDT-SWAP" size="20">
-      <button onclick="watch(true)">加入关注</button>
-      <button onclick="watch(false)">移出关注</button>
-      <button onclick="submitRun()">提交单次分析</button>
-      <button onclick="submitDaily()">提交社区日报</button></p>
-    <div class="muted">手动任务由 worker 进程执行;worker 未运行时会一直显示 pending。</div>
+<header>
+  <div class="topbar">
+    <div class="brand"><span class="brandmark" aria-hidden="true">RT</span>RightTrend</div>
+    <nav class="nav" aria-label="页面导航"><a href="#latest-section">行情报告</a><a href="#community-section">社区日报</a><a href="#watch-section">关注与任务</a><a href="#jobs-section">运行记录</a></nav>
   </div>
+</header>
+<main>
+  <div class="intro">
+    <div><div class="eyebrow">OKX · MARKET RESEARCH</div><h1>行情研究室</h1><p>从多周期盘面，到可验证的下一步。</p></div>
+    <div class="intro-action"><button id="refreshButton" type="button">刷新报告</button><span class="updated" id="updated">每分钟刷新页面</span></div>
+  </div>
+  <div class="meta" id="meta">正在读取运行状态…</div>
+  <div class="notice error" id="loadError" role="alert" hidden></div>
 
-  <h2>最近任务</h2>
-  <div class="card scroll"><table id="jobs"></table></div>
+  <section id="latest-section" aria-labelledby="latest-title">
+    <div class="section-top"><h2 id="latest-title">最新行情报告</h2><p id="report-count">自动获取行情 · 本地规则复核</p></div>
+    <div id="latest"><div class="card empty">正在加载报告…</div></div>
+  </section>
+
+  <section id="community-section" aria-labelledby="community-title">
+    <div class="section-top"><h2 id="community-title">社区日报</h2><p>公开讨论与反对观点</p></div>
+    <div class="card padded" id="community"><div class="empty">正在加载社区日报…</div></div>
+  </section>
+
+  <section id="watch-section" aria-labelledby="watch-title">
+    <div class="section-top"><h2 id="watch-title">关注列表与手动任务</h2><p>按币种管理分析范围</p></div>
+    <div class="card padded">
+      <div class="watchlist" id="watch"><span class="muted small">正在读取关注列表…</span></div>
+      <label class="form-label" for="instInput">OKX 产品代码</label>
+      <div class="actions" id="actions">
+        <input id="instInput" placeholder="例如 ETH-USDT-SWAP" maxlength="40" autocomplete="off" spellcheck="false" aria-describedby="workerNote">
+        <button id="runButton" class="primary" type="button">生成单次报告</button>
+        <button id="addButton" type="button">加入关注</button>
+        <button id="removeButton" type="button">移出关注</button>
+        <span class="actions-separator" aria-hidden="true"></span>
+        <button id="dailyButton" type="button">生成社区日报</button>
+      </div>
+      <div class="muted small" id="workerNote">任务提交后由 worker 执行；worker 未运行时，任务将保持等待状态。</div>
+      <div class="notice" id="actionMessage" role="status" aria-live="polite" hidden></div>
+    </div>
+  </section>
+
+  <section id="jobs-section" aria-labelledby="jobs-title">
+    <div class="section-top"><h2 id="jobs-title">最近任务</h2><p>执行状态与错误记录</p></div>
+    <div class="card jobs-card scroll"><table class="jobs-table" id="jobs"><caption class="small muted">正在加载最近任务…</caption></table></div>
+  </section>
+  <footer>RightTrend 提供分析参考，不执行交易。模型信心不代表历史胜率或收益概率。时间按当前浏览器时区显示。</footer>
 </main>
 <script>
-const fmt = ms => ms ? new Date(ms).toLocaleString('zh-CN', {hour12:false}) : '—';
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-async function j(url, opt) { const r = await fetch(url, opt); return r.json(); }
-
-function reportCard(r) {
-  const t = r.technical, f = r.final, c = r.community;
-  const lv = (r.model_raw && r.model_raw.levels) || {};
-  return `<div class="card">
-    <div><b>${esc(r.inst_id)}</b> <span class="tag ${esc(f.final)}">${esc(f.label)}</span></div>
-    <div class="muted">分析时刻 ${fmt(r.analysis_as_of)} · 现价 ${esc(r.live_price)} · 模型 ${esc(r.model || '—')}(${esc(r.model_status)})</div>
-    <div>技术:${esc(t.verdict)} · 右侧 ${esc(t.right_side)} · 结构确认 ${t.structure_confirmed ? '是' : '否'} · 盈亏比检查 ${esc(t.rr.status)}${t.rr.at_live ? '(净 ' + esc(t.rr.at_live.net_rr) + ')' : ''}</div>
-    <div>社区:${c.available ? esc(c.sentiment) : '不可用'}${c.note ? '(' + esc(c.note) + ')' : ''}</div>
-    ${Object.keys(lv).length ? '<ul>' + ['1W','1D','4H','1H'].map(k => `<li>${k}:${esc(lv[k])}</li>`).join('') + '</ul>' : ''}
-    ${(t.downgrades||[]).length ? '<div>降级原因:<ul>' + t.downgrades.map(x => `<li>${esc(x)}</li>`).join('') + '</ul></div>' : ''}
-    ${(t.conflicts||[]).length ? '<div>冲突:' + t.conflicts.map(esc).join(';') + '</div>' : ''}
-    <div>依据:<ul>${(t.reasons||[]).slice(0,6).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
-    ${(f.notes||[]).length ? '<div class="muted">' + f.notes.map(esc).join(';') + '</div>' : ''}
-    ${r.model_raw && r.model_raw.watch_next ? '<div class="muted">下一小时观察:' + esc(r.model_raw.watch_next) + '</div>' : ''}
+'use strict';
+const $ = id => document.getElementById(id);
+const list = value => Array.isArray(value) ? value : [];
+const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = ms => {
+  if (ms === null || ms === undefined || ms === '') return '—';
+  const date = new Date(Number(ms));
+  return Number.isFinite(date.getTime()) ? date.toLocaleString('zh-CN', {hour12:false}) : '—';
+};
+const price = value => {
+  if (value === null || value === undefined || value === '' || !Number.isFinite(Number(value))) return '—';
+  return Number(value).toLocaleString('zh-CN', {maximumFractionDigits:8});
+};
+const labels = {
+  long:'偏多',short:'偏空',watch:'观望',no_signal:'暂无有效信号',confirmed:'已确认',unconfirmed:'未确认',
+  pending:'等待执行',running:'执行中',succeeded:'已完成',failed:'失败',skipped:'已跳过',
+  available:'可用',unavailable:'不可用',not_available:'未提供',not_configured:'未配置',configured:'已配置',ok:'正常',
+  empty:'暂无数据',error:'数据错误',schema_invalid:'输出校验未通过',skipped_over_budget:'输入超预算，已跳过',
+  missing:'缺失',stale:'已过期',insufficient:'数据不足',insufficient_data:'数据不足',invalid:'无效',
+  conditional:'待条件确认',neutral:'中性',bullish:'偏多',bearish:'偏空',unknown:'未知',
+  hourly:'小时分析',manual_hourly:'手动分析',daily:'社区日报',manual_daily:'手动日报'
+};
+const label = value => labels[value] || String(value ?? '—');
+const tone = value => ['long','short','watch','no_signal'].includes(value) ? value : 'no_signal';
+const bullets = (items, fallback = '暂无补充说明。') => list(items).length ? '<ul>' + items.map(item => `<li>${esc(item)}</li>`).join('') + '</ul>' : `<p class="muted small">${esc(fallback)}</p>`;
+function safeUrl(value) {
+  try { const url = new URL(value); return ['https:','http:'].includes(url.protocol) ? url.href : null; }
+  catch (_) { return null; }
+}
+function evidenceLink(e) {
+  const href = safeUrl(e.url);
+  return (href ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(e.ref || '原文')}</a>` : esc(e.ref || '链接不可用')) + ' ' + esc(e.stance);
+}
+async function request(url, options) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(url, {...options, signal:controller.signal, cache:'no-store'});
+    let data;
+    try { data = await response.json(); } catch (_) { throw new Error(`服务返回了无法读取的内容（HTTP ${response.status}）。`); }
+    if (!response.ok || (data.code !== undefined && data.code !== 0)) throw new Error(data.msg || `请求失败（HTTP ${response.status}）。`);
+    return data;
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('请求超时，请检查服务是否正常运行。');
+    throw error;
+  } finally { clearTimeout(timeout); }
+}
+function sectionHeading(number, title) {
+  return `<div class="section-heading"><span class="section-no" aria-hidden="true">${number}</span><h3>${esc(title)}</h3></div>`;
+}
+function validation(r) {
+  const t = r.technical || {}, f = r.final || {}, c = r.community || {}, rr = t.rr || {};
+  return `<div class="validation-content">
+    <p>技术结论：${esc(label(t.verdict))} · 右侧确认：${esc(label(t.right_side))} · 结构确认：${t.structure_confirmed ? '是' : '否'} · 盈亏比检查：${esc(label(rr.status))}${rr.at_live ? '（净盈亏比 ' + esc(rr.at_live.net_rr) + '）' : ''}</p>
+    <p>社区：${c.available ? esc(label(c.sentiment)) : '不可用'}${c.note ? ' · ' + esc(c.note) : ''}</p>
+    ${list(t.downgrades).length ? '<h4>降级原因</h4>' + bullets(t.downgrades) : ''}
+    ${list(t.conflicts).length ? '<h4>周期或方向冲突</h4>' + bullets(t.conflicts) : ''}
+    ${list(t.reasons).length ? '<h4>技术依据</h4>' + bullets(t.reasons) : ''}
+    ${list(f.notes).length ? '<h4>最终复核</h4>' + bullets(f.notes) : ''}
   </div>`;
 }
-
+function levelCard(level, focus, key) {
+  const isFocus = level.level === focus;
+  return `<details class="level" data-detail-key="${esc(key + '-' + level.level)}" ${isFocus ? 'open' : ''}>
+    <summary class="level-toggle"><span class="level-title">${esc(level.level)}</span>${isFocus ? '<span class="focus-tag">主观察周期</span>' : ''}<span class="level-direction">${esc(level.direction || '暂无方向判断')}</span></summary>
+    <div class="level-content">
+      <p class="level-context">数据质量：${esc(label(level.quality))} · 最新收盘时间：${esc(fmt(level.last_closed_at))} · 收盘价：${esc(price(level.close))}</p>
+      <div class="metrics">${list(level.metrics).map(m => `<div class="metric"><div class="metric-name">${esc(m.name)}</div><div class="metric-value">${esc(m.value)}</div>${m.interpretation ? `<div class="metric-note">${esc(m.interpretation)}</div>` : ''}</div>`).join('')}</div>
+      ${list(level.key_levels).length ? '<div class="key-label">关注价位</div><div class="key-levels">' + level.key_levels.map(k => `<span class="key-level">${esc(k.name)}<strong>${esc(price(k.price))}</strong></span>`).join('') + '</div>' : ''}
+      ${level.model_comment ? `<p class="model-comment"><span>模型解读</span>${esc(level.model_comment)}</p>` : ''}
+    </div>
+  </details>`;
+}
+function scenarioCard(s, index) {
+  return `<div class="scenario">
+    <div class="scenario-top"><span class="scenario-letter">${['A','B','C'][index] || index + 1}</span><span class="tag ${s.status === 'conditional' ? 'watch' : 'no_signal'}">${s.status === 'conditional' ? '待条件确认' : '暂不可用'}</span><span class="muted small">${esc(s.level)}</span></div>
+    <h4>${esc(s.title)}</h4><p>${esc(s.setup)}</p>
+    <div class="scenario-label">确认条件</div>${bullets(s.confirmation, '暂无可验证的确认条件。')}
+    <div class="scenario-label">失效边界</div>${bullets(s.invalidation, '暂无有效失效边界。')}
+    <div class="scenario-action"><span class="muted small">应对方式</span><p>${esc(s.action || '等待新的已收盘行情。')}</p></div>
+  </div>`;
+}
+function detailBody(r, key) {
+  const d = r.detail, focus = d.focus_level || '4H';
+  const levels = list(d.levels).slice().sort((a,b) => (a.level === focus ? -1 : b.level === focus ? 1 : ['1W','1D','4H','1H'].indexOf(a.level) - ['1W','1D','4H','1H'].indexOf(b.level)));
+  return `<div class="report-section">${sectionHeading('01','当前盘面与关键价位')}<p class="basis">${esc(d.basis || '以已收盘 K 线为分析依据。')}</p>${levels.map(lv => levelCard(lv,focus,key)).join('') || '<p class="muted">暂无可用周期数据。</p>'}</div>
+    <div class="report-section">${sectionHeading('02','接下来，等待什么条件？')}<p class="section-note">以下是条件情景。只有确认条件成立并通过风险校验，才可重新评估；不代表当前已出现交易信号。</p><div class="scenarios">${list(d.scenarios).map(scenarioCard).join('') || '<p class="muted">暂无可用情景，等待行情数据更新。</p>'}</div></div>
+    <div class="report-section">${sectionHeading('03','当前操作计划')}<div class="plan"><div class="plan-status">${esc(label(d.plan?.status))}</div>${bullets(d.plan?.items,'暂无可执行计划，等待确认。')}</div></div>
+    <div class="report-section">${sectionHeading('04','资金与链上数据')}<div class="funds">${list(d.funds).map(f => `<div class="fund"><div class="fund-title"><strong>${esc(f.name)}</strong><span class="tag no_signal">${esc(label(f.status))}</span></div><p>${esc(f.note)}</p></div>`).join('') || '<p class="muted small">本报告未提供资金与链上数据。</p>'}</div></div>
+    <div class="two-col"><div class="report-section">${sectionHeading('05','风险与失效提醒')}<div class="risk-list">${bullets(d.risks)}</div></div><div class="report-section">${sectionHeading('06','下一步观察')}<div class="risk-list">${bullets(d.next_watch,'等待下一个已收盘周期。')}</div></div></div>
+    ${d.conclusion ? `<div class="conclusion">${esc(d.conclusion)}</div>` : ''}
+    <details class="validation" data-detail-key="${esc(key)}-validation"><summary class="validation-toggle">查看模型与本地校验记录</summary>${validation(r)}</details>`;
+}
+function legacyBody(r) {
+  const lv = r.model_raw?.levels || {};
+  return `<div class="report-section legacy"><p class="muted small">这是一份历史摘要报告。生成新的分析后，可查看多周期指标与条件情景。</p>
+    ${Object.keys(lv).length ? '<h3>多周期观点</h3><ul>' + ['1W','1D','4H','1H'].filter(k => lv[k]).map(k => `<li><strong>${k}</strong>：${esc(lv[k])}</li>`).join('') + '</ul>' : ''}
+    ${validation(r)}${r.model_raw?.watch_next ? '<h4>下一步观察</h4><p>' + esc(r.model_raw.watch_next) + '</p>' : ''}</div>`;
+}
+const reportCache = new Map();
+function reportCard(r, index) {
+  const key = String(r.report_id || r.inst_id || index), f = r.final || {}, detail = r.detail && typeof r.detail === 'object' ? r.detail : null;
+  const firstReport = reportCache.size === 0;
+  reportCache.set(String(index),r);
+  return `<article class="card report">
+    <div class="report-head">
+      <div class="report-top"><div class="instrument"><span class="instrument-name">${esc(r.inst_id)}</span><span class="tag ${tone(f.final)}">${esc(f.label || label(f.final))}</span></div><span class="report-time">分析于 ${esc(fmt(detail?.as_of || r.analysis_as_of))}</span></div>
+      <h3 class="headline">${esc(detail?.headline || f.label || '等待有效分析结论')}</h3>
+      ${detail?.summary ? `<p class="report-summary">${esc(detail.summary)}</p>` : ''}
+      <div class="report-meta"><span>报告时参考价 <strong>${esc(price(r.live_price))}</strong></span><span>主观察周期 <strong>${esc(detail?.focus_level || '多周期')}</strong></span><span>模型 ${esc(r.model || '未配置')} · ${esc(label(r.model_status))}</span></div>
+    </div>
+    <details class="report-body" data-detail-key="${esc(key)}" ${firstReport ? 'open' : ''}><summary class="report-toggle">${detail ? '完整行情报告' : '查看历史报告详情'}<span class="muted small">${detail ? '盘面 · 情景 · 计划' : '观点与复核记录'}</span></summary>
+      <div class="reading">${detail ? detailBody(r,key) : legacyBody(r)}<div class="report-footer"><span>分析截至 ${esc(fmt(detail?.as_of || r.analysis_as_of))}，请结合后续收盘数据复核。</span><button type="button" data-copy-report="${index}">复制报告</button></div></div>
+    </details>
+  </article>`;
+}
+function communityCard(cr) {
+  if (!cr) return '<div class="empty"><strong>尚无社区日报</strong>可在下方提交社区日报任务。</div>';
+  const stats = cr.sample_stats || {};
+  return `<div class="community-meta">${esc(fmt(cr.window_start))} — ${esc(fmt(cr.window_end))} · 采集 ${esc(label(cr.collection_status))}（${esc(cr.source_mode)}）· 模型 ${esc(label(cr.model_status))}<br>原始 ${esc(stats.raw ?? '—')} 条 · 有效 ${esc(stats.valid ?? '—')} 条 · 作者 ${esc(stats.authors_total ?? '—')} · 未解析图片 ${esc(stats.unparsed_images ?? 0)} · 模型输入截断 ${esc(stats.truncated_for_model ?? 0)} · 过期时间 ${esc(fmt(cr.expires_at))}</div>
+    ${cr.overall?.summary ? '<p>' + esc(cr.overall.summary) + '</p>' : ''}
+    ${list(cr.assets).length ? `<div class="scroll"><table class="community-table"><thead><tr><th>币种</th><th>样本</th><th>情绪</th><th>趋势预期</th><th>主题 / 反对观点</th><th>证据</th></tr></thead><tbody>${cr.assets.map(a => `<tr><td><strong>${esc(a.symbol)}</strong></td><td>${esc(label(a.data_quality))}${a.sample ? '<br>' + esc(a.sample.valid_posts) + ' 帖 / ' + esc(a.sample.authors) + ' 作者' : ''}</td><td>${esc(label(a.sentiment))}</td><td>${a.trend_expectation ? esc(label(a.trend_expectation.direction)) + ' ' + esc(a.trend_expectation.horizon) : '—'}</td><td>${list(a.themes).map(esc).join('；')}${list(a.counterarguments).length ? '<br><span class="muted">反对观点：' + a.counterarguments.map(esc).join('；') + '</span>' : ''}${a.note ? '<br><span class="muted">' + esc(a.note) + '</span>' : ''}</td><td>${list(a.evidence).slice(0,5).map(evidenceLink).join('<br>') || '—'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">暂无可用币种观点。</p>'}`;
+}
+function jobsTable(jobs) {
+  return '<thead><tr><th>任务类型</th><th>对象</th><th>时段</th><th>状态</th><th>错误</th><th>调用 / Token</th><th>完成时间</th></tr></thead><tbody>' + (list(jobs).map(x => `<tr><td>${esc(label(x.job_type))}</td><td>${esc(x.scope)}</td><td>${esc(x.slot_key)}</td><td>${esc(label(x.status))}${x.uncertain ? '（不确定）' : ''}</td><td>${esc(x.error_code || '—')}</td><td>${esc(x.llm_calls ?? 0)} / ${esc(x.tokens ?? 0)}</td><td>${esc(fmt(x.finished_at))}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">暂无任务记录。</td></tr>') + '</tbody>';
+}
+function updateReports(html) {
+  const states = new Map(Array.from($('latest').querySelectorAll('details[data-detail-key]'), e => [e.dataset.detailKey,e.open]));
+  $('latest').innerHTML = html;
+  $('latest').querySelectorAll('details[data-detail-key]').forEach(e => { if (states.has(e.dataset.detailKey)) e.open = states.get(e.dataset.detailKey); });
+}
+let loading = false;
 async function load() {
-  const s = await j('/api/status');
-  document.getElementById('meta').textContent =
-    `模型 ${s.llm}${s.model ? ' · ' + s.model : ''} · 每小时整点后 ${s.schedule.hourly_delay_sec}s · 每日 ${s.schedule.daily_time} (${s.schedule.schedule_tz}) · 日周线口径 ${s.schedule.daily_bar_mode}`;
-  const watching = s.watchlist.filter(w => w.enabled).map(w => w.inst_id);
-  document.getElementById('watch').innerHTML = '关注中:' + (watching.map(esc).join('、') || '无');
-  const cards = [];
-  for (const inst of watching) {
-    const r = await j('/api/reports?n=1&inst=' + encodeURIComponent(inst));
-    cards.push(r.reports[0] ? reportCard(r.reports[0]) : `<div class="card"><b>${esc(inst)}</b><div class="muted">尚无报告</div></div>`);
-  }
-  document.getElementById('latest').innerHTML = cards.join('');
-  const cr = (await j('/api/community?n=1')).reports[0];
-  document.getElementById('community').innerHTML = cr ? `
-    <div>${fmt(cr.window_start)} — ${fmt(cr.window_end)} · 采集 <b>${esc(cr.collection_status)}</b> (${esc(cr.source_mode)}) · 模型 ${esc(cr.model_status)} · 过期 ${fmt(cr.expires_at)}</div>
-    <div class="muted">原始 ${esc(cr.sample_stats.raw)} 条 · 有效 ${esc(cr.sample_stats.valid ?? '—')} · 作者 ${esc(cr.sample_stats.authors_total ?? '—')} · 未解析图片 ${esc(cr.sample_stats.unparsed_images ?? 0)} · 截断 ${esc(cr.sample_stats.truncated_for_model ?? 0)}</div>
-    ${cr.overall && cr.overall.summary ? '<p>' + esc(cr.overall.summary) + '</p>' : ''}
-    <table><tr><th>币种</th><th>样本</th><th>情绪</th><th>趋势预期</th><th>主题 / 反对观点</th><th>证据</th></tr>
-    ${cr.assets.map(a => `<tr><td>${esc(a.symbol)}</td><td>${esc(a.data_quality)}${a.sample ? '<br>' + a.sample.valid_posts + ' 帖 / ' + a.sample.authors + ' 作者' : ''}</td>
-      <td>${esc(a.sentiment)}</td><td>${a.trend_expectation ? esc(a.trend_expectation.direction) + ' ' + esc(a.trend_expectation.horizon || '') : '—'}</td>
-      <td>${(a.themes||[]).map(esc).join(';')}${(a.counterarguments||[]).length ? '<br><span class="muted">反:' + a.counterarguments.map(esc).join(';') + '</span>' : ''}${a.note ? '<br><span class="muted">' + esc(a.note) + '</span>' : ''}</td>
-      <td>${(a.evidence||[]).slice(0,5).map(e => `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.ref)}</a> ${esc(e.stance)}`).join('<br>')}</td></tr>`).join('')}
-    </table>` : '<span class="muted">尚无社区日报</span>';
-  document.getElementById('jobs').innerHTML = '<tr><th>类型</th><th>对象</th><th>时段</th><th>状态</th><th>错误</th><th>调用/Token</th><th>完成</th></tr>' +
-    s.recent_jobs.map(x => `<tr><td>${esc(x.job_type)}</td><td>${esc(x.scope)}</td><td>${esc(x.slot_key)}</td><td>${esc(x.status)}${x.uncertain ? '(不确定)' : ''}</td><td>${esc(x.error_code || '')}</td><td>${x.llm_calls}/${x.tokens}</td><td>${fmt(x.finished_at)}</td></tr>`).join('');
+  if (loading) return;
+  loading = true;
+  $('refreshButton').disabled = true;
+  try {
+    const s = await request('/api/status'), schedule = s.schedule || {};
+    $('meta').textContent = `模型 ${label(s.llm)}${s.model ? ' · ' + s.model : ''}　·　每小时整点后 ${schedule.hourly_delay_sec ?? '—'} 秒分析　·　社区日报 ${schedule.daily_time || '—'}（${schedule.schedule_tz || '—'}）　·　日周线口径 ${schedule.daily_bar_mode || '—'}`;
+    const watching = list(s.watchlist).filter(w => w.enabled).map(w => w.inst_id);
+    $('watch').innerHTML = '<span class="muted small">关注中</span>' + (watching.map(inst => `<span class="watch-chip">${esc(inst)}</span>`).join('') || '<span class="muted small">暂无关注币种</span>');
+    $('jobs').innerHTML = jobsTable(s.recent_jobs);
+    const results = await Promise.allSettled([...watching.map(inst => request('/api/reports?n=1&inst=' + encodeURIComponent(inst))),request('/api/community?n=1')]);
+    const errors = [];
+    reportCache.clear();
+    updateReports(watching.map((inst,index) => {
+      const result = results[index];
+      if (result.status === 'rejected') { errors.push(`${inst}：${result.reason.message}`); return `<div class="card empty"><strong>${esc(inst)}</strong><span class="short">报告加载失败：${esc(result.reason.message)}</span></div>`; }
+      const report = list(result.value.reports)[0];
+      return report ? reportCard(report,index) : `<div class="card empty"><strong>${esc(inst)}</strong>尚无报告。提交单次分析，或等待下一个定时任务。</div>`;
+    }).join('') || '<div class="card empty"><strong>从一个关注币种开始</strong>在下方加入 OKX 产品代码，即可定时获取行情报告。</div>');
+    const community = results[watching.length];
+    if (community.status === 'fulfilled') $('community').innerHTML = communityCard(list(community.value.reports)[0]);
+    else { errors.push(`社区日报：${community.reason.message}`); $('community').innerHTML = `<div class="empty short">社区日报加载失败：${esc(community.reason.message)}</div>`; }
+    $('report-count').textContent = `${watching.length} 个关注产品 · 已收盘数据分析`;
+    $('loadError').hidden = !errors.length;
+    $('loadError').textContent = errors.length ? '部分数据未能加载。' + errors.join('；') : '';
+    $('updated').textContent = `${new Date().toLocaleTimeString('zh-CN',{hour12:false})} 已刷新`;
+  } catch (error) {
+    $('loadError').textContent = '页面刷新失败：' + error.message + ' 请点击“刷新报告”重试。';
+    $('loadError').hidden = false;
+    $('updated').textContent = '刷新失败';
+  } finally { loading = false; $('refreshButton').disabled = false; }
 }
-async function watch(on) {
-  const inst = document.getElementById('instInput').value.trim(); if (!inst) return;
-  await j(`/api/watchlist?inst=${encodeURIComponent(inst)}&on=${on ? 1 : 0}`, {method:'POST'}); load();
+function showAction(message, isError = false) {
+  const element = $('actionMessage');
+  element.textContent = message;
+  element.className = 'notice ' + (isError ? 'error' : 'success');
+  element.hidden = false;
 }
-async function submitRun() {
-  const inst = document.getElementById('instInput').value.trim(); if (!inst) return;
-  await j('/api/run?target=' + encodeURIComponent(inst), {method:'POST'}); load();
+async function action(type) {
+  const inst = $('instInput').value.trim().toUpperCase();
+  if (type !== 'daily' && !inst) { showAction('请先填写 OKX 产品代码，例如 ETH-USDT-SWAP。',true); $('instInput').focus(); return; }
+  const buttons = Array.from($('actions').querySelectorAll('button'));
+  buttons.forEach(button => { button.disabled = true; });
+  try {
+    const url = type === 'daily' ? '/api/run?target=daily' : type === 'run' ? '/api/run?target=' + encodeURIComponent(inst) : '/api/watchlist?inst=' + encodeURIComponent(inst) + '&on=' + (type === 'add' ? '1' : '0');
+    const result = await request(url,{method:'POST'});
+    showAction(type === 'add' ? `${inst} 已加入关注。` : type === 'remove' ? `${inst} 已移出关注。` : result.note || '任务已提交，等待 worker 执行。');
+    $('instInput').value = inst;
+    await load();
+  } catch (error) { showAction('操作失败：' + error.message,true); }
+  finally { buttons.forEach(button => { button.disabled = false; }); }
 }
-async function submitDaily() { await j('/api/run?target=daily', {method:'POST'}); load(); }
-load(); setInterval(load, 60000);
+function reportText(r) {
+  const d = r.detail;
+  if (!d) return [r.inst_id,r.final?.label,'分析于 ' + fmt(r.analysis_as_of),...list(r.technical?.reasons),...list(r.technical?.downgrades),r.model_raw?.watch_next || ''].join('\n');
+  const lines = [r.inst_id + ' · RightTrend 行情报告',fmt(d.as_of || r.analysis_as_of),d.headline,d.summary,'',d.basis,'','当前盘面'];
+  list(d.levels).forEach(lv => {
+    lines.push(lv.level + '：' + lv.direction,'数据质量：' + label(lv.quality) + ' · 收盘时间：' + fmt(lv.last_closed_at) + ' · 收盘价：' + price(lv.close));
+    list(lv.metrics).forEach(m => lines.push(m.name + '：' + m.value + (m.interpretation ? '。' + m.interpretation : '')));
+    list(lv.key_levels).forEach(k => lines.push(k.name + '：' + price(k.price)));
+    if (lv.model_comment) lines.push('模型解读：' + lv.model_comment);
+    lines.push('');
+  });
+  lines.push('条件情景（不代表当前已出现交易信号）');
+  list(d.scenarios).forEach(s => lines.push(s.title + ' · ' + label(s.status),s.setup,'确认条件：',...list(s.confirmation).map(x => '- ' + x),'失效边界：',...list(s.invalidation).map(x => '- ' + x),'应对：' + s.action,''));
+  lines.push('当前计划：' + label(d.plan?.status),...list(d.plan?.items),'','资金与链上数据');
+  list(d.funds).forEach(f => lines.push(f.name + '：' + label(f.status) + '。' + f.note));
+  lines.push('','风险提醒',...list(d.risks),'','下一步观察',...list(d.next_watch),'',d.conclusion,'','分析仅供参考，不执行交易。');
+  return lines.filter(x => x !== undefined && x !== null).join('\n');
+}
+$('latest').addEventListener('click',async event => {
+  const button = event.target.closest('button[data-copy-report]');
+  if (!button) return;
+  const report = reportCache.get(button.dataset.copyReport);
+  if (!report) return;
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('当前浏览器不支持复制，请使用 HTTPS 或 localhost 访问。');
+    await navigator.clipboard.writeText(reportText(report));
+    button.textContent = '已复制';
+    setTimeout(() => { button.textContent = '复制报告'; },2000);
+  } catch (error) { $('loadError').textContent = '复制失败：' + error.message; $('loadError').hidden = false; }
+});
+$('refreshButton').addEventListener('click',load);
+$('runButton').addEventListener('click',() => action('run'));
+$('addButton').addEventListener('click',() => action('add'));
+$('removeButton').addEventListener('click',() => action('remove'));
+$('dailyButton').addEventListener('click',() => action('daily'));
+load();
+setInterval(() => { if (!document.hidden) load(); },60000);
 </script>
 </body>
 </html>

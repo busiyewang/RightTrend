@@ -122,6 +122,25 @@ class ReviewTest(unittest.TestCase):
             r = review(bad)
             self.assertEqual(r["verdict"], "unavailable", bad)
 
+    def test_wrong_enum_types_fail_closed_without_exceptions(self):
+        for field in ("verdict", "right_side", "signal_level", "signal_type"):
+            for value in ([], {}, 42, True, ["long"], {"value": "B3"}):
+                with self.subTest(field=field, value=value):
+                    r = review(model(**{field: value}))
+                    self.assertEqual(r["verdict"], "unavailable")
+                    self.assertFalse(r["structure_confirmed"])
+
+    def test_malformed_nested_fields_fail_closed(self):
+        cases = [model(levels=42), model(evidence_ids={}), model(reasons=7),
+                 model(targets={}), model(targets=[[]]), model(entry=[]),
+                 model(entry={"price": 10 ** 400, "basis": "LIVE"}),
+                 model(stop={"price": 99.8, "basis": "LIVE", "offset_pct": []}),
+                 model(stop={"price": 99.8, "basis": "LIVE", "offset_pct": {}}),
+                 model(confidence=[]), model(watch_next={})]
+        for bad in cases:
+            with self.subTest(bad=bad):
+                self.assertEqual(review(bad)["verdict"], "unavailable")
+
     def test_model_failure_is_unavailable(self):
         self.assertEqual(review(None, status="timeout")["verdict"], "unavailable")
         self.assertEqual(review(None, status="not_configured")["verdict"], "unavailable")
@@ -151,7 +170,9 @@ class CombineTest(unittest.TestCase):
     def test_community_view_states(self):
         rep = {"report_id": "C1", "generated_at": AS_OF - H, "expires_at": AS_OF + H,
                "collection_status": "ok",
-               "assets": [{"symbol": "BTC", "data_quality": "sufficient", "sentiment": "neutral"},
+               "assets": [{"symbol": "BTC", "data_quality": "sufficient", "sentiment": "neutral",
+                           "trend_expectation": {"direction": "sideways"},
+                           "evidence": [{"ref": "P1", "post_id": "post1", "stance": "neutral", "kind": "opinion"}]},
                           {"symbol": "ETH", "data_quality": "insufficient", "sentiment": "unknown"}]}
         self.assertEqual(community_view(rep, "BTC", AS_OF)["sentiment"], "neutral")
         self.assertEqual(community_view(rep, "ETH", AS_OF)["status"], "insufficient")
@@ -159,6 +180,26 @@ class CombineTest(unittest.TestCase):
         failed = dict(rep, collection_status="blocked")
         self.assertEqual(community_view(failed, "BTC", AS_OF)["status"], "blocked")
         self.assertEqual(community_view(None, "BTC", AS_OF)["status"], "missing")
+
+    def test_legacy_community_cannot_influence_direction_without_valid_evidence(self):
+        base = {"symbol": "BTC", "data_quality": "sufficient", "sentiment": "bearish",
+                "trend_expectation": {"direction": "down"},
+                "evidence": [{"ref": "P1", "post_id": "post1", "stance": "support", "kind": "opinion"}]}
+        cases = [dict(base, sentiment=value) for value in ("buy", [], {}, 1)]
+        cases += [dict(base, trend_expectation={"direction": value}) for value in ("buy", [], {}, 1)]
+        cases += [dict(base, evidence=value) for value in (None, [], {}, 1,
+                    [{"ref": "P999", "stance": "support", "kind": "opinion"}],
+                    [dict(base["evidence"][0], symbol="ETH")],
+                    [dict(base["evidence"][0], stance={})])]
+        for asset in cases:
+            with self.subTest(asset=asset):
+                rep = {"report_id": "old", "generated_at": AS_OF - H, "expires_at": AS_OF + H,
+                       "collection_status": "ok", "assets": [asset]}
+                comm = community_view(rep, "BTC", AS_OF)
+                self.assertFalse(comm["available"])
+                final = combine(self.T_LONG, comm)
+                self.assertEqual(final["final"], "long")
+                self.assertIn("社区参考不可用", final["notes"][0])
 
 
 class DeepSeekTest(unittest.TestCase):

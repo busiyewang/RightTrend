@@ -1,6 +1,9 @@
 import json
 import unittest
+from copy import deepcopy
 
+from analysis.combine import combine, community_view
+from analysis.schema import validate_community
 from community.process import make_matcher, process_posts, stratified_sample
 from community.report import build_report
 from community.sources import CollectionResult, ImportSource, OrbitPublicSource
@@ -87,6 +90,53 @@ def llm_with(content):
                           sleep=lambda x: None), s
 
 
+def community_content():
+    return {"overall": {"sentiment": "neutral", "summary": "观点平淡", "themes": []},
+            "assets": [{"symbol": "BTC", "sentiment": "neutral",
+                        "trend_expectation": {"direction": "sideways", "horizon": "本周"},
+                        "themes": [], "counterarguments": [], "risks": [],
+                        "evidence": [{"ref": "P1", "stance": "neutral", "kind": "opinion", "summary": "观点"}]}]}
+
+
+class CommunitySchemaTest(unittest.TestCase):
+    def test_wrong_enum_types_reject_asset_without_exception(self):
+        for path in (("sentiment",), ("trend_expectation", "direction"),
+                     ("evidence", 0, "stance"), ("evidence", 0, "kind")):
+            for value in ([], {}, 1, True, ["neutral"]):
+                with self.subTest(path=path, value=value):
+                    content = community_content()
+                    target = content["assets"][0]
+                    for part in path[:-1]:
+                        target = target[part]
+                    target[path[-1]] = value
+                    norm, errors = validate_community(content, ["BTC"])
+                    self.assertTrue(errors)
+                    self.assertEqual(norm["assets"], [])
+                    self.assertIn("BTC", norm["asset_errors"])
+
+    def test_wrong_container_types_and_duplicates_fail_closed(self):
+        for field in ("evidence", "themes", "counterarguments", "risks", "trend_expectation"):
+            for value in (42, "bad", {"unexpected": "value"}):
+                with self.subTest(field=field, value=value):
+                    content = community_content()
+                    content["assets"][0][field] = value
+                    norm, errors = validate_community(content, ["BTC"])
+                    self.assertTrue(errors)
+                    self.assertEqual(norm["assets"], [])
+        for field, value in (("assets", 42), ("assets", {}), ("assets", [42]),
+                             ("overall", 42), ("overall", {"sentiment": []}),
+                             ("overall", {"sentiment": "neutral", "themes": 42})):
+            content = community_content()
+            content[field] = value
+            _, errors = validate_community(content, ["BTC"])
+            self.assertTrue(errors)
+        content = community_content()
+        content["assets"].append(deepcopy(content["assets"][0]))
+        norm, errors = validate_community(content, ["BTC"])
+        self.assertEqual(norm["assets"], [])
+        self.assertTrue(any("重复" in error for error in errors))
+
+
 class ReportTest(unittest.TestCase):
     def test_three_states_are_distinct(self):
         content = {"overall": {"sentiment": "neutral", "summary": "平淡", "themes": []},
@@ -106,6 +156,8 @@ class ReportTest(unittest.TestCase):
         self.assertTrue(any("P999" in e for e in rep["validation_errors"]))
         self.assertEqual(rep["expires_at"], NOW + 26 * H)
         self.assertEqual(rep["llm_calls"], 1)
+        self.assertEqual(rep["model_status"], "partial")
+        self.assertTrue(community_view(rep, "BTC", NOW)["available"])
 
         class Blocked:
             name = "orbit_public"
@@ -139,6 +191,64 @@ class ReportTest(unittest.TestCase):
         sent = llm.sess.posts[0]["messages"]
         self.assertIn("视为数据", sent[0]["content"])
         self.assertIn("忽略之前所有规则", sent[1]["content"])   # 只出现在用户数据里
+
+    def test_no_verified_reference_rejects_direction_but_valid_neutral_survives(self):
+        for refs in ([], ["P999"]):
+            with self.subTest(refs=refs):
+                content = community_content()
+                asset = content["assets"][0]
+                asset.update(sentiment="bearish", trend_expectation={"direction": "down"})
+                asset["evidence"] = [dict(asset["evidence"][0], ref=ref) for ref in refs]
+                llm, s = llm_with(content)
+                rep = build_report(ImportSource(sufficient_posts()), llm, s, ["BTC"], NOW)
+                self.assertEqual(rep["model_status"], "failed")
+                self.assertEqual(rep["assets"][0]["sentiment"], "unknown")
+                self.assertEqual(rep["assets"][0]["analysis_status"], "no_evidence")
+                self.assertIsNone(rep["overall"])
+                comm = community_view(rep, "BTC", NOW)
+                self.assertFalse(comm["available"])
+                self.assertEqual(combine({"verdict": "long"}, comm)["final"], "long")
+        llm, s = llm_with(community_content())
+        neutral = build_report(ImportSource(sufficient_posts()), llm, s, ["BTC"], NOW)
+        self.assertEqual(neutral["model_status"], "ok")
+        self.assertEqual(community_view(neutral, "BTC", NOW)["sentiment"], "neutral")
+
+    def test_schema_failure_is_isolated_per_asset(self):
+        content = community_content()
+        eth = deepcopy(content["assets"][0])
+        eth.update(symbol="ETH", sentiment={"direction": "bullish"})
+        eth["evidence"][0]["ref"] = "P13"
+        content["assets"].append(eth)
+        posts = sufficient_posts() + [dict(p, post_id="eth-" + p["post_id"]) for p in sufficient_posts("ETH")]
+        llm, s = llm_with(content)
+        rep = build_report(ImportSource(posts), llm, s, ["BTC", "ETH"], NOW)
+        self.assertEqual(rep["model_status"], "partial")
+        self.assertTrue(community_view(rep, "BTC", NOW)["available"])
+        self.assertEqual(community_view(rep, "ETH", NOW)["status"], "schema_invalid")
+        self.assertEqual(rep["assets"][1]["sentiment"], "unknown")
+
+    def test_cross_asset_reference_does_not_count_as_verified_evidence(self):
+        content = community_content()
+        eth = deepcopy(content["assets"][0])
+        eth["symbol"] = "ETH"
+        eth["evidence"][0]["ref"] = "P13"
+        content["assets"].append(eth)
+        content["assets"][0]["evidence"][0]["ref"] = "P13"
+        posts = sufficient_posts() + [dict(p, post_id="eth-" + p["post_id"]) for p in sufficient_posts("ETH")]
+        llm, s = llm_with(content)
+        rep = build_report(ImportSource(posts), llm, s, ["BTC", "ETH"], NOW)
+        self.assertEqual(rep["model_status"], "partial")
+        self.assertEqual(community_view(rep, "BTC", NOW)["status"], "no_evidence")
+        self.assertTrue(community_view(rep, "ETH", NOW)["available"])
+
+    def test_all_asset_schema_errors_mark_model_failed(self):
+        content = community_content()
+        content["assets"][0]["evidence"] = 7
+        llm, s = llm_with(content)
+        rep = build_report(ImportSource(sufficient_posts()), llm, s, ["BTC"], NOW)
+        self.assertEqual(rep["model_status"], "failed")
+        self.assertEqual(rep["assets"][0]["analysis_status"], "schema_invalid")
+        self.assertIn("evidence", rep["model_error"])
 
 
 def page(posts, total=99, has_next=True):

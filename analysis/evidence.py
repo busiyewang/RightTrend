@@ -120,6 +120,12 @@ def level_evidence(level_data, live: Optional[float], stop_buffer: float = 0.002
                "price": _r(min(c["l"] for c in recent))})
     kl.append({"id": f"L-{lv}-LAST_CLOSE", "level": lv, "name": f"{lv} 最后收盘价",
                "price": _r(cs[-1]["c"])})
+    # 只添加可核验的已收盘均线价位,不创建或升级任何结构信号。
+    for n in indicators.EMA_PERIODS:
+        values = pl["indicators"]["ema"][f"ema{n}"]
+        if values[-1] is not None:
+            kl.append({"id": f"L-{lv}-EMA{n}", "level": lv,
+                       "name": f"{lv} EMA{n}(已收盘)", "price": _r(values[-1])})
     return out
 
 

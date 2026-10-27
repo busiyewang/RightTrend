@@ -3,6 +3,7 @@
 import json
 import logging
 import unittest
+from unittest.mock import patch
 
 from jobs.runner import Context, analyze, community_daily, run_hourly_job
 from llm.deepseek import DeepSeekClient
@@ -33,6 +34,12 @@ def dump_db(store):
 
 
 class EndToEndTest(unittest.TestCase):
+    def setUp(self):
+        # 行情夹具固定在 NOW；任务入口也必须使用同一时钟，不能随运行日期变旧。
+        clock = patch("market.service.now_ms", return_value=NOW)
+        clock.start()
+        self.addCleanup(clock.stop)
+
     def test_no_key_saves_local_report_as_not_configured(self):
         ctx = ctx_with(None)
         jid = ctx.store.claim_job("hourly", "BTC-USDT-SWAP", "k", NOW)
@@ -43,6 +50,9 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(rep["model_status"], "not_configured")
         self.assertEqual(rep["final"]["final"], "no_signal")
         self.assertEqual(set(rep["input_meta"]["bars_sent"]), {"1H", "4H", "1D", "1W"})
+        self.assertEqual(rep["detail"]["focus_level"], "4H")
+        self.assertIn("无有效模型技术结论", rep["detail"]["summary"])
+        self.assertEqual({row["level"] for row in rep["detail"]["levels"]}, {"1H", "4H", "1D", "1W"})
 
     def test_fabricated_model_output_is_watch_and_nothing_sensitive_stored(self):
         bogus = {"verdict": "long", "right_side": "confirmed", "signal_level": "1H", "signal_type": "B2",
@@ -76,6 +86,19 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(ctx.store.job(jid)["status"], "failed")
         self.assertEqual(ctx.store.reports()[0]["final"]["final"], "no_signal")
 
+    def test_invalid_schema_saves_unavailable_report_and_failed_job(self):
+        for value in ('{"verdict":"long"}', '{"verdict":[]}'):
+            with self.subTest(value=value):
+                ctx = ctx_with([FakeResp(200, chat_body(value))])
+                jid = ctx.store.claim_job("hourly", "BTC-USDT-SWAP", "k", NOW)
+                run_hourly_job(ctx, jid, "BTC-USDT-SWAP")
+                job = ctx.store.job(jid)
+                rep = ctx.store.reports()[0]
+                self.assertEqual((job["status"], job["error_code"]), ("failed", "schema_invalid"))
+                self.assertEqual(rep["technical"]["verdict"], "unavailable")
+                self.assertEqual(rep["detail"]["plan"]["status"], "等待条件")
+                self.assertTrue(all(lv["model_comment"] is None for lv in rep["detail"]["levels"]))
+
     def test_hourly_report_references_valid_community_report_only(self):
         ctx = ctx_with(None)
         from community.sources import ImportSource
@@ -85,10 +108,12 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(crep["model_status"], "not_configured")
         rep = analyze(ctx, "BTC-USDT-SWAP", now=NOW)
         self.assertEqual(rep["community_report_id"], crep["report_id"])
-        self.assertEqual(rep["community"]["status"], "unknown")   # 无模型 → 情绪未知 → 不参与
+        self.assertEqual(rep["community"]["status"], "unavailable")  # 无模型 → 结论不可用 → 不参与
+        self.assertFalse(rep["community"]["available"])
         late = analyze(ctx, "BTC-USDT-SWAP", now=NOW + 27 * 3_600_000)
         self.assertIsNone(late["community_report_id"])            # 过期日报不再参与
         self.assertEqual(ctx.store.report(rep["report_id"])["community_report_id"], crep["report_id"])
+        self.assertEqual(ctx.store.report(rep["report_id"])["detail"], rep["detail"])
 
 
 if __name__ == "__main__":

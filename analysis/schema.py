@@ -15,10 +15,22 @@ STANCES = {"support", "oppose", "neutral"}
 KINDS = {"opinion", "rumor", "verifiable_event"}
 
 
+def valid_enum(value, choices) -> bool:
+    """先检查类型,避免模型输出数组/对象时集合查找抛出 TypeError。"""
+    return isinstance(value, str) and value in choices
+
+
+def _finite_number(value) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def _num(v) -> Optional[float]:
-    if isinstance(v, bool) or not isinstance(v, (int, float)):
-        return None
-    return float(v) if math.isfinite(v) and v > 0 else None
+    return float(v) if _finite_number(v) and v > 0 else None
 
 
 def _str_list(d: Dict, key: str, errs: List[str], required=False) -> List[str]:
@@ -31,6 +43,14 @@ def _str_list(d: Dict, key: str, errs: List[str], required=False) -> List[str]:
         errs.append(f"{key} 必须是字符串数组")
         return []
     return v
+
+
+def _optional_str(d: Dict, key: str, errs: List[str]):
+    value = d.get(key)
+    if value is not None and not isinstance(value, str):
+        errs.append(f"{key} 必须是字符串")
+        return None
+    return value
 
 
 def _price_ref(v, key: str, errs: List[str]) -> Optional[Dict]:
@@ -50,8 +70,8 @@ def _price_ref(v, key: str, errs: List[str]) -> Optional[Dict]:
     if not isinstance(basis, str) or not basis:
         errs.append(f"{key}.basis 缺失")
         return None
-    off = v.get("offset_pct", 0) or 0
-    if isinstance(off, bool) or not isinstance(off, (int, float)) or not math.isfinite(off) or abs(off) > 20:
+    off = v.get("offset_pct", 0)
+    if not _finite_number(off) or abs(off) > 20:
         errs.append(f"{key}.offset_pct 无效")
         return None
     return {"price": price, "basis": basis, "offset_pct": float(off)}
@@ -63,20 +83,24 @@ def validate_tech(raw: Dict) -> Tuple[Dict, List[str]]:
         return {}, ["输出不是 JSON 对象"]
     out: Dict = {}
     v = raw.get("verdict")
-    if v not in VERDICTS:
+    if not valid_enum(v, VERDICTS):
         errs.append(f"verdict 枚举无效: {v!r}")
+        v = None
     out["verdict"] = v
     rs = raw.get("right_side")
-    if rs not in RIGHT_SIDE:
+    if not valid_enum(rs, RIGHT_SIDE):
         errs.append(f"right_side 枚举无效: {rs!r}")
+        rs = None
     out["right_side"] = rs
     sl = raw.get("signal_level")
-    if sl is not None and sl not in LEVELS:
+    if sl is not None and not valid_enum(sl, LEVELS):
         errs.append(f"signal_level 无效: {sl!r}")
+        sl = None
     out["signal_level"] = sl
     st = raw.get("signal_type")
-    if st is not None and st not in SIGNAL_TYPES:
+    if st is not None and not valid_enum(st, SIGNAL_TYPES):
         errs.append(f"signal_type 无效: {st!r}")
+        st = None
     out["signal_type"] = st
     out["evidence_ids"] = _str_list(raw, "evidence_ids", errs, required=True)
     lv = raw.get("levels")
@@ -92,18 +116,14 @@ def validate_tech(raw: Dict) -> Tuple[Dict, List[str]]:
         tg = []
     out["targets"] = [t for t in (_price_ref(x, f"targets[{i}]", errs) for i, x in enumerate(tg)) if t]
     conf = raw.get("confidence")
-    if conf is not None and (isinstance(conf, bool) or not isinstance(conf, (int, float)) or not 0 <= conf <= 100):
+    if conf is not None and (not _finite_number(conf) or not 0 <= conf <= 100):
         errs.append("confidence 必须是 0-100")
         conf = None
     out["confidence"] = conf
     out["reasons"] = _str_list(raw, "reasons", errs, required=True)
     out["risks"] = _str_list(raw, "risks", errs)
     for k in ("invalidation", "watch_next"):
-        val = raw.get(k)
-        if val is not None and not isinstance(val, str):
-            errs.append(f"{k} 必须是字符串")
-            val = None
-        out[k] = val
+        out[k] = _optional_str(raw, k, errs)
     if v in ("long", "short") and rs != "confirmed":
         errs.append("verdict 为 long/short 时 right_side 必须为 confirmed")
     if st and v in ("long", "short") and ((v == "long") != (st[0] == "B")):
@@ -115,13 +135,22 @@ def validate_community(raw: Dict, allowed_symbols: List[str]) -> Tuple[Dict, Lis
     errs: List[str] = []
     if not isinstance(raw, dict):
         return {}, ["输出不是 JSON 对象"]
-    ov = raw.get("overall") or {}
-    if not isinstance(ov, dict) or ov.get("sentiment") not in SENTIMENTS:
-        errs.append("overall.sentiment 无效")
-        ov = {"sentiment": "unknown"} if not isinstance(ov, dict) else ov
-    overall = {"sentiment": ov.get("sentiment"), "summary": ov.get("summary") if isinstance(ov.get("summary"), str) else None,
-               "themes": [t for t in (ov.get("themes") or []) if isinstance(t, str)]}
-    assets = []
+    ov = raw.get("overall")
+    overall = None
+    if not isinstance(ov, dict):
+        errs.append("overall 必须是对象")
+    else:
+        oerr: List[str] = []
+        if not valid_enum(ov.get("sentiment"), SENTIMENTS):
+            oerr.append("sentiment 无效")
+        summary = _optional_str(ov, "summary", oerr)
+        themes = _str_list(ov, "themes", oerr)
+        errs.extend(f"overall.{e}" for e in oerr)
+        if not oerr:
+            overall = {"sentiment": ov["sentiment"], "summary": summary, "themes": themes}
+    assets: Dict[str, Dict] = {}
+    asset_errors: Dict[str, List[str]] = {}
+    seen = set()
     items = raw.get("assets")
     if not isinstance(items, list):
         errs.append("assets 必须是数组")
@@ -131,32 +160,50 @@ def validate_community(raw: Dict, allowed_symbols: List[str]) -> Tuple[Dict, Lis
             errs.append("assets 元素不是对象")
             continue
         sym = a.get("symbol")
-        if sym not in allowed_symbols:
+        if not isinstance(sym, str) or sym not in allowed_symbols:
             errs.append(f"未请求的币种 {sym!r}")
             continue
+        if sym in seen:
+            error = f"{sym}: 重复的币种结论"
+            errs.append(error)
+            asset_errors.setdefault(sym, []).append(error)
+            assets.pop(sym, None)
+            continue
+        seen.add(sym)
         aerr: List[str] = []
-        if a.get("sentiment") not in SENTIMENTS:
-            aerr.append(f"{sym}.sentiment 无效")
-        te = a.get("trend_expectation") or {}
-        if not isinstance(te, dict) or te.get("direction") not in DIRECTIONS:
-            aerr.append(f"{sym}.trend_expectation.direction 无效")
+        if not valid_enum(a.get("sentiment"), SENTIMENTS):
+            aerr.append("sentiment 无效")
+        te = a.get("trend_expectation")
+        if not isinstance(te, dict) or not valid_enum(te.get("direction"), DIRECTIONS):
+            aerr.append("trend_expectation.direction 无效")
             te = {"direction": "unknown"}
+        horizon = _optional_str(te, "horizon", aerr)
         evs = []
-        for e in a.get("evidence") or []:
-            if not isinstance(e, dict) or not isinstance(e.get("ref"), str):
-                aerr.append(f"{sym}.evidence 元素无效")
+        evidence = a.get("evidence", [])
+        if not isinstance(evidence, list):
+            aerr.append("evidence 必须是数组")
+            evidence = []
+        for e in evidence:
+            if not isinstance(e, dict) or not isinstance(e.get("ref"), str) or not e["ref"]:
+                aerr.append("evidence 元素无效")
                 continue
-            if e.get("stance") not in STANCES or e.get("kind") not in KINDS:
-                aerr.append(f"{sym}.evidence {e.get('ref')} 的 stance/kind 无效")
+            if not valid_enum(e.get("stance"), STANCES) or not valid_enum(e.get("kind"), KINDS):
+                aerr.append(f"evidence {e.get('ref')} 的 stance/kind 无效")
                 continue
             evs.append({"ref": e["ref"], "stance": e["stance"], "kind": e["kind"],
-                        "summary": e.get("summary") if isinstance(e.get("summary"), str) else ""})
-        errs.extend(aerr)
-        assets.append({"symbol": sym, "sentiment": a.get("sentiment"),
-                       "trend_expectation": {"direction": te.get("direction"),
-                                             "horizon": te.get("horizon") if isinstance(te.get("horizon"), str) else None},
-                       "themes": [t for t in (a.get("themes") or []) if isinstance(t, str)],
-                       "counterarguments": [t for t in (a.get("counterarguments") or []) if isinstance(t, str)],
-                       "risks": [t for t in (a.get("risks") or []) if isinstance(t, str)],
-                       "evidence": evs})
-    return {"overall": overall, "assets": assets}, errs
+                        "summary": _optional_str(e, "summary", aerr) or ""})
+        normalized = {"symbol": sym, "sentiment": a.get("sentiment"),
+                      "trend_expectation": {"direction": te.get("direction"), "horizon": horizon},
+                      "themes": _str_list(a, "themes", aerr),
+                      "counterarguments": _str_list(a, "counterarguments", aerr),
+                      "risks": _str_list(a, "risks", aerr), "evidence": evs}
+        if aerr:
+            asset_errors[sym] = [f"{sym}.{e}" for e in aerr]
+            errs.extend(asset_errors[sym])
+        else:
+            assets[sym] = normalized
+    for sym in allowed_symbols:
+        if sym not in seen:
+            asset_errors[sym] = [f"{sym}: 模型未返回该币种结论"]
+            errs.extend(asset_errors[sym])
+    return {"overall": overall, "assets": list(assets.values()), "asset_errors": asset_errors}, errs

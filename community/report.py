@@ -87,6 +87,9 @@ def build_report(source: CommunitySource, llm: DeepSeekClient, settings, symbols
     rep["sample_stats"] = stats
 
     model_assets: Dict[str, Dict] = {}
+    asset_errors: Dict[str, List[str]] = {}
+    sent_refs: Dict[str, set] = {}
+    errors = []
     if model_input:
         if not llm.configured:
             rep["model_status"] = "not_configured"
@@ -96,7 +99,6 @@ def build_report(source: CommunitySource, llm: DeepSeekClient, settings, symbols
             text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
             batches = [list(model_input)] if len(text) <= settings.community_input_max_chars \
                 else [[s] for s in model_input]
-            errors = []
             for group in batches:
                 sub = {"window": stats["coverage"], "assets": {s: model_input[s] for s in group}}
                 body = json.dumps(sub, ensure_ascii=False, separators=(",", ":"))
@@ -106,6 +108,7 @@ def build_report(source: CommunitySource, llm: DeepSeekClient, settings, symbols
                         stats.setdefault("model_trim", []).append(f"{s}: 样本 {len(sub['assets'][s])}→{keep} 条")
                         sub["assets"][s] = sub["assets"][s][-keep:]
                     body = json.dumps(sub, ensure_ascii=False, separators=(",", ":"))
+                sent_refs.update({s: {p["ref"] for p in sub["assets"][s]} for s in group})
                 rep["llm_calls"] += 1
                 try:
                     r = llm.chat_json(COMMUNITY_SYSTEM_PROMPT, "社区帖子样本(JSON):\n" + body)
@@ -118,11 +121,12 @@ def build_report(source: CommunitySource, llm: DeepSeekClient, settings, symbols
                 rep["tokens"] += int(r.usage.get("total_tokens") or 0)
                 norm, verr = validate_community(r.data, group)
                 rep["validation_errors"].extend(verr)
+                asset_errors.update(norm.get("asset_errors", {}))
                 if norm.get("overall") and (rep["overall"] is None or len(batches) == 1):
                     rep["overall"] = norm["overall"]
                 for a in norm.get("assets", []):
                     model_assets[a["symbol"]] = a
-            rep["model_status"] = "ok" if model_assets and not errors else \
+            rep["model_status"] = "ok" if model_assets and not errors and not rep["validation_errors"] else \
                 ("partial" if model_assets else "failed")
             if errors:
                 rep["model_error"] = "; ".join(errors)[:500]
@@ -138,13 +142,14 @@ def build_report(source: CommunitySource, llm: DeepSeekClient, settings, symbols
                   "coverage": [fmt_ts(a["coverage"][0]), fmt_ts(a["coverage"][1])] if a["coverage"] else None}
         item = {"symbol": s, "data_quality": a["data_quality"], "sample": sample,
                 "sentiment": "unknown", "trend_expectation": None, "themes": [],
-                "counterarguments": [], "risks": [], "evidence": []}
+                "counterarguments": [], "risks": [], "evidence": [], "analysis_status": "unavailable"}
         if a["data_quality"] == "insufficient":
+            item["analysis_status"] = "insufficient"
             item["note"] = (f"样本不足:有效 {a['valid']} 条/{a['authors']} 位作者,"
                             f"门槛 {settings.community_min_posts} 条/{settings.community_min_authors} 位")
         m = model_assets.get(s)
         if a["data_quality"] == "sufficient" and m:
-            allowed = {ref_of[p["post_id"]] for p in sampled[s]}
+            allowed = sent_refs.get(s, set())
             evs, bad = [], []
             for e in m["evidence"]:
                 if e["ref"] not in allowed:
@@ -152,16 +157,39 @@ def build_report(source: CommunitySource, llm: DeepSeekClient, settings, symbols
                     continue
                 p = all_posts[post_by_ref[e["ref"]]]
                 evs.append({**e, "post_id": p["post_id"], "url": p.get("url"),
-                            "publish_time": p["publish_time"], "author_name": p.get("author_name")})
+                            "publish_time": p["publish_time"], "author_name": p.get("author_name"),
+                            "symbol": s})
             if bad:
                 rep["validation_errors"].append(f"{s}: 模型引用了不存在或不属于该币种的帖子 {bad[:5]},已丢弃")
-            item.update({k: m[k] for k in ("sentiment", "trend_expectation", "themes",
-                                           "counterarguments", "risks")})
-            item["evidence"] = evs
             if not evs:
+                item["analysis_status"] = "no_evidence"
                 item["note"] = "模型未给出可核对的证据"
+                rep["validation_errors"].append(f"{s}: {item['note']},不采纳社区方向")
+            elif m["sentiment"] == "unknown":
+                item["analysis_status"] = "unknown"
+                item["note"] = "社区情绪未知"
+                item["evidence"] = evs
+            else:
+                item.update({k: m[k] for k in ("sentiment", "trend_expectation", "themes",
+                                               "counterarguments", "risks")})
+                item["evidence"] = evs
+                item["analysis_status"] = "ok"
         elif a["data_quality"] == "sufficient":
-            item["note"] = f"模型结论不可用({rep['model_status']})"
+            if s in asset_errors:
+                item["analysis_status"] = "schema_invalid"
+                item["validation_errors"] = asset_errors[s]
+                item["note"] = "模型输出未通过校验:" + ";".join(asset_errors[s][:3])
+            else:
+                item["note"] = f"模型结论不可用({rep['model_status']})"
         rep["assets"].append(item)
+    if model_input and llm.configured:
+        accepted = sum(a["analysis_status"] == "ok" for a in rep["assets"])
+        rep["model_status"] = ("failed" if not accepted else
+                               "partial" if accepted < len(model_input) or errors or rep["validation_errors"]
+                               else "ok")
+        if rep["model_status"] == "failed":
+            rep["overall"] = None
+        if rep["model_status"] != "ok" and "model_error" not in rep:
+            rep["model_error"] = ";".join(rep["validation_errors"])[:500] or "模型未给出可用的社区结论"
     rep["_posts"] = list(all_posts.values())
     return rep

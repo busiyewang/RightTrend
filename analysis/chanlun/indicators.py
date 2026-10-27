@@ -1,4 +1,4 @@
-"""技术指标计算:MACD / KDJ / RSI。
+"""技术指标计算:MACD / KDJ / RSI / EMA。
 
 公式与《缠论MACD币圈实战手册》及国内软件惯例一致:
 - MACD(10,20,5),HIST = 2 × (DIF − DEA)
@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+
+EMA_PERIODS = (5, 10, 20, 40, 60, 80)
 
 
 def _sma_cn(series: pd.Series, n: int) -> pd.Series:
@@ -60,6 +62,10 @@ def compute_all(candles: list[dict]) -> dict:
                 for v in s.tolist()]
 
     return {
+        # 展示用指数均线;不是课程中的双倍 SMA,不参与缠论结构判定。
+        # 没有达到对应周期的已收盘样本数时明确返回 None。
+        "ema": {f"ema{n}": tolist(close.ewm(span=n, adjust=False, min_periods=n).mean())
+                for n in EMA_PERIODS},
         "macd": {"dif": tolist(dif), "dea": tolist(dea), "hist": tolist(hist)},
         "kdj": {"k": tolist(k), "d": tolist(d), "j": tolist(j)},
         "rsi": {"rsi6": tolist(rsi(close, 6)), "rsi12": tolist(rsi(close, 12)),
