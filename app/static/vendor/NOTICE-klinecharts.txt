@@ -1,0 +1,7 @@
+KLineChart 9.8.9
+Copyright (c) 2019 lihu.
+Licensed under the Apache License, Version 2.0 (see LICENSE-klinecharts.txt).
+Project: https://github.com/klinecharts/KLineChart
+
+This unmodified distribution was copied from the user's local 缠论 project.
+RightTrend's chart integration is maintained separately in ../chart.js.

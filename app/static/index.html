@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>RightTrend · 行情研究室</title>
+<link rel="stylesheet" href="/assets/chart.css">
 <style>
   :root { color-scheme:light; --bg:#f4f5f3; --paper:#fff; --ink:#202c28; --muted:#69756f; --line:#dde4de; --soft:#f7f9f6; --accent:#226348; --accent-soft:#eaf3eb; --long:#237445; --short:#b54c41; --watch:#8a672b; --watch-soft:#f8f3e8; --error-bg:#fff1ed; --shadow:0 3px 18px #253c2d05; }
   * { box-sizing:border-box; }
@@ -199,6 +200,34 @@
 
   <section id="latest-section" aria-labelledby="latest-title">
     <div class="section-top"><h2 id="latest-title">最新行情报告</h2><p id="report-count">自动获取行情 · 本地规则复核</p></div>
+    <section class="card rt-chart-card" id="market-chart-card" aria-labelledby="market-chart-title">
+      <div class="rt-chart-heading">
+        <div><div class="eyebrow">MARKET STRUCTURE</div><h3 id="market-chart-title">ETH 行情分析图</h3><p>读懂价格、动能与缠论结构</p></div>
+        <div class="rt-chart-price"><strong id="chart-price">—</strong><span id="chart-price-note">最近已收盘价格</span></div>
+      </div>
+      <div class="rt-chart-toolbar">
+        <label class="rt-chart-instrument">产品<select id="chart-instrument" aria-label="图表产品"><option value="ETH-USDT-SWAP">ETH-USDT-SWAP</option></select></label>
+        <div class="rt-chart-periods" id="chart-periods" role="group" aria-label="图表周期">
+          <button type="button" data-level="1H" aria-pressed="false">1H</button><button type="button" data-level="4H" aria-pressed="true">4H</button><button type="button" data-level="1D" aria-pressed="false">1D</button><button type="button" data-level="1W" aria-pressed="false">1W</button>
+        </div>
+        <div class="rt-chart-actions"><button type="button" id="chart-reset" title="恢复默认缩放并回到最新K线">回到最新</button><button type="button" id="chart-refresh">刷新图表</button></div>
+      </div>
+      <div class="rt-chart-options" id="chart-options" role="group" aria-label="显示图层">
+        <label><input type="checkbox" data-layer="ema" checked><i class="rt-dot rt-ema"></i>EMA</label>
+        <label><input type="checkbox" data-layer="bi" checked><i class="rt-dot rt-bi"></i>笔</label>
+        <label><input type="checkbox" data-layer="segments"><i class="rt-dot rt-segment"></i>线段</label>
+        <label><input type="checkbox" data-layer="centers" checked><i class="rt-dot rt-center"></i>中枢</label>
+        <label><input type="checkbox" data-layer="signals" checked><i class="rt-dot rt-signal"></i>买卖点</label>
+        <label><input type="checkbox" data-layer="levels">关键位</label>
+        <label class="rt-chart-auto"><input type="checkbox" id="chart-auto" checked>每分钟更新</label>
+      </div>
+      <div class="rt-chart-surface">
+        <div id="market-chart" role="img" aria-label="ETH价格K线、缠论结构、成交量和MACD交互图"></div>
+        <div class="rt-chart-loading" id="chart-loading" role="status">正在加载行情图…</div>
+      </div>
+      <div class="rt-chart-lowerbar"><span class="rt-chart-legend">实线＝已锁定 · 虚线＝候选结构</span><div class="rt-chart-indicators" id="chart-indicators" role="group" aria-label="动能指标"><button type="button" data-indicator="macd" aria-pressed="true">MACD</button><button type="button" data-indicator="kdj" aria-pressed="false">KDJ</button><button type="button" data-indicator="rsi" aria-pressed="false">RSI</button></div></div>
+      <div class="rt-chart-info"><p id="chart-status" role="status" aria-live="polite">默认观察 4H，支持拖动、缩放和十字光标查看。</p><p class="rt-chart-error" id="chart-error" role="alert" hidden></p><div id="chart-signals" class="rt-chart-signals"></div><p class="rt-chart-footnote">图表按最新行情独立更新，时间可能晚于下方报告。标注位于历史极值，确认时间见信号说明；历史信号不等于当前入场条件。</p></div>
+    </section>
     <div id="latest"><div class="card empty">正在加载报告…</div></div>
   </section>
 
@@ -231,6 +260,8 @@
   </section>
   <footer>RightTrend 提供分析参考，不执行交易。模型信心不代表历史胜率或收益概率。时间按当前浏览器时区显示。</footer>
 </main>
+<script src="/assets/vendor/klinecharts.min.js"></script>
+<script src="/assets/chart.js"></script>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
@@ -372,6 +403,7 @@ async function load() {
     const s = await request('/api/status'), schedule = s.schedule || {};
     $('meta').textContent = `模型 ${label(s.llm)}${s.model ? ' · ' + s.model : ''}　·　每小时整点后 ${schedule.hourly_delay_sec ?? '—'} 秒分析　·　社区日报 ${schedule.daily_time || '—'}（${schedule.schedule_tz || '—'}）　·　日周线口径 ${schedule.daily_bar_mode || '—'}`;
     const watching = list(s.watchlist).filter(w => w.enabled).map(w => w.inst_id);
+    window.RightTrendChart?.setInstruments(watching);
     $('watch').innerHTML = '<span class="muted small">关注中</span>' + (watching.map(inst => `<span class="watch-chip">${esc(inst)}</span>`).join('') || '<span class="muted small">暂无关注币种</span>');
     $('jobs').innerHTML = jobsTable(s.recent_jobs);
     const results = await Promise.allSettled([...watching.map(inst => request('/api/reports?n=1&inst=' + encodeURIComponent(inst))),request('/api/community?n=1')]);

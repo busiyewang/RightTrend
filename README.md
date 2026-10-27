@@ -7,6 +7,10 @@
 结果页现已提供详细中文报告：一句结论、四周期盘面、条件情景、参考计划、数据缺口、风险与下一步观察。
 默认展开 4H，可展开 1H/1D/1W 对照，支持复制整份报告。新报告会保存生成时的指标与关键位摘要；旧报告仍可查看原有内容。
 
+报告上方提供交互式行情分析图，默认 ETH / 4H，可切换关注产品及 1H / 4H / 日线 / 周线。
+K 线支持拖动、缩放和十字光标，并可叠加 EMA、笔、线段、中枢和结构信号，配合成交量与 MACD 观察。
+图表按需读取 OKX 行情，独立于下方保存的报告更新，查看和刷新图表不会调用 DeepSeek。
+
 > 结论只是分析参考,不构成投资建议。模型给出的 confidence 是主观把握,不是历史胜率或收益概率。
 
 ---
@@ -40,7 +44,7 @@ cp .env.example .env                           # 填 DEEPSEEK_API_KEY 和 DEEPSE
 没有 DeepSeek key 也能运行:行情、缓存、本地证据和社区采集照常工作,模型状态显示 `not_configured`,
 小时报告的最终结论为"无有效技术结论"；详细页仍展示本地指标与待确认的观察情景。
 
-网页本身只查询结果和提交任务；要每小时自动拉行情生成报告，需另开终端运行 `worker`。
+网页查询报告、按需获取图表行情和提交任务；要每小时自动拉行情生成报告，需另开终端运行 `worker`。
 只想先查看一份真实行情报告时，可先运行 `analyze ETH-USDT-SWAP`，再运行 `serve`。
 
 本机代理提示(沿用参考项目经验):访问 OKX 需要走系统代理(不要清 `https_proxy`);用 curl 访问本服务时加
@@ -150,6 +154,16 @@ cp .env.example .env                           # 填 DEEPSEEK_API_KEY 和 DEEPSE
 详细工程规则与边界见 [docs/report-profile.md](docs/report-profile.md)。报告使用本地确定性模板组织事实与情景；
 DeepSeek 在原有一次技术调用中补充周期解释，不增加额外模型调用，也不展示模型内部思考过程。
 
+### 2.6 行情分析图(`app/charting.py`、`app/static/chart.js`)
+
+- 默认展示 ETH 的 4H 图，可切换关注产品和四个分析周期。主图支持 EMA5/10/20/40/60/80、笔、线段、中枢及买卖点开关。
+- 数据来自 OKX 公共行情接口，结构复用 `analysis/chanlun/`，指标使用后端计算值；MACD 为 (10,20,5)，柱值为 `2 × (DIF − DEA)`。
+- 结构和指标只使用已收盘且收盘时间不晚于本次快照的 K 线。未收盘报价单列，不混入已确认结构。
+- 候选结构以虚线表示；结构信号区分未确认、已确认和失效状态。标签位置是历史极值位置，可知/锁定时间可能更晚；图上买卖点不是最终交易许可。
+- 图表显示自己的行情快照时间和质量提示；下方报告保留原分析时间。图表不改写报告，不增加模型调用。
+- Web 进程按产品/周期缓存行情，60 秒内复用结果，首次打开需预热；刷新失败时旧行情带过期提示。原始 K 线只在内存中。
+- 本地打包 KLineChart 9.8.9，无需 CDN；版本与许可证见 `app/static/vendor/`。
+
 ---
 
 ## 3. 社区采集:已验证范围与限制
@@ -207,7 +221,7 @@ OKX 官方 FAQ 说明 Orbit 没有公开 API。本项目只读取**公开网页�
 
 ## 4. 调度、去重与运维
 
-- worker 是唯一执行定时任务的进程(文件锁 `var/worker.lock`);`serve` 只读状态、改关注列表、提交手动任务。
+- worker 是唯一执行定时任务的进程(文件锁 `var/worker.lock`);`serve` 查询状态/报告、提供图表行情、改关注列表、提交手动任务。
 - 小时任务唯一键 `(hourly, inst_id, UTC 整点)`;每日任务唯一键 `(daily, *, 调度时区逻辑日期)`;SQLite 唯一约束
   防止重复 tick、重启或多次调用造成重复执行。
 - 10:00:30 启动 → 10:01:30 执行 10 点任务。某整点只在它自己那一小时内有效;停机期间错过的时段记
@@ -238,7 +252,8 @@ OKX 官方 FAQ 说明 Orbit 没有公开 API。本项目只读取**公开网页�
 ## 5. 代码结构
 
 ```
-app/        config.py(配置)  cli.py(命令行)  api.py(查询 API)  static/index.html(结果页)
+app/        config.py(配置)  cli.py(命令行)  api.py(查询 API)  charting.py(图表行情)
+            static/index.html(结果页)  static/chart.js(图表)  static/vendor/(本地图表库)
 market/     okx.py(OKX 客户端)  cache.py(内存缓存)  service.py(预热/增量/质量/批次快照)  timeframes.py
 analysis/   chanlun/(缠论与指标)  evidence.py  snapshot.py  schema.py  validate.py  combine.py
             market_summary.py(指标摘要)  reporting.py(详细报告)
@@ -250,7 +265,7 @@ tests/      离线夹具与测试(不访问网络、不调用付费 API)
 ```
 
 API:`GET /api/status`、`GET /api/reports?inst=&n=`、`GET /api/reports/<id>`、`GET /api/community?n=`、
-`GET /api/jobs`、`POST /api/watchlist?inst=&on=1|0`、`POST /api/run?target=<inst>|daily`。
+`GET /api/chart?inst=ETH-USDT-SWAP&level=4H`、`GET /api/jobs`、`POST /api/watchlist?inst=&on=1|0`、`POST /api/run?target=<inst>|daily`。
 
 与参考项目的差异:新项目有独立虚拟环境与配置,不 import 参考项目的 `server.py`,不复制其 `.env`;
 修正了旧实现每小时强制全量重拉、缓存无过期检查、模型输出只检查能否解析 JSON、硬编码模型名与 `reasoner`
@@ -260,8 +275,12 @@ API:`GET /api/status`、`GET /api/reports?inst=&n=`、`GET /api/reports/<id>`、
 
 ## 6. 验证状态(2026-10-27)
 
+图表扩展的本次验证：离线测试 **155 通过 / 1 跳过**；真实 ETH 的 1H/4H/1D 各返回 1199 根已收盘 K 线，
+1W 返回 361 根，四周期质量均为 `ok`。图表只查询公开行情，不创建任务或调用模型。
+浏览器已检查周期/指标/图层切换，以及 390px 移动布局无横向溢出。
+
 详细报告扩展的本次验证：离线测试 **142 通过 / 1 跳过**；真实 ETH 四周期行情已成功获取并生成无模型报告，
-本地浏览器已检查详细页。DeepSeek 尚未配置，因此不把本次验证记为真实模型联调通过。
+本地浏览器已检查详细页。当时尚未配置 DeepSeek；后续本机配置完成后，单次真实 ETH 报告已调用成功并通过 Schema 校验。
 原端到端测试固定行情时刻却读取系统时钟的问题已修正；无效技术 Schema 现在记录为失败任务。
 
 以下保留首版交付时的验证记录：

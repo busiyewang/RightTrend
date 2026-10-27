@@ -1,4 +1,4 @@
-"""查询 API 与轻量中文结果页。Web 进程不执行定时任务,只读状态、改关注列表、提交手动任务。"""
+"""查询 API 与中文结果页。Web 不执行定时任务;图表按需抓取公开行情并在内存计算。"""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import time
 
 from flask import Flask, jsonify, request, send_from_directory
 
+from app.charting import ChartService, ChartUnavailable
 from app.config import ROOT, Settings
 from storage.db import Store
 
@@ -20,10 +21,24 @@ def _inst(v: str) -> str:
     return v
 
 
-def create_app(settings: Settings, store: Store = None) -> Flask:
+def create_app(settings: Settings, store: Store = None,
+               chart_service: ChartService = None) -> Flask:
     app = Flask(__name__, static_folder=None)
     st = store or Store(settings.db_path)
     st.ensure_watchlist(settings.default_watchlist)
+    charts = chart_service if chart_service is not None else ChartService(settings)
+
+    @app.get("/api/chart")
+    def chart():
+        inst = _inst(request.args.get("inst", "ETH-USDT-SWAP"))
+        level = request.args.get("level", "4H").strip().upper()
+        # 已停用的关注产品仍可查看历史报告旁的图表,但不接受任意币种。
+        if inst not in st.watchlist(enabled_only=False):
+            raise ValueError("请先将该产品加入关注列表")
+        try:
+            return jsonify(charts.snapshot(inst, level))
+        except ChartUnavailable as e:
+            return jsonify({"code": 1, "msg": str(e), "quality": e.quality}), 503
 
     @app.errorhandler(ValueError)
     def bad(e):
@@ -89,6 +104,10 @@ def create_app(settings: Settings, store: Store = None) -> Flask:
     @app.get("/")
     def index():
         return send_from_directory(os.path.join(ROOT, "app", "static"), "index.html")
+
+    @app.get("/assets/<path:filename>")
+    def asset(filename):
+        return send_from_directory(os.path.join(ROOT, "app", "static"), filename)
 
     return app
 
